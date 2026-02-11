@@ -50,7 +50,7 @@ const MapPickerModal: React.FC<{
           .addTo(mapRef.current);
       }
 
-      mapRef.current.on('click', (e) => {
+      mapRef.current.on('click', (e: maplibregl.MapMouseEvent) => {
         const { lng, lat } = e.lngLat;
         setSelectedPos({ lat, lng });
 
