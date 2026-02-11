@@ -1,12 +1,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company } from './types';
-import { MOCK_USERS, MOCK_SITES, MOCK_REPORTS } from './constants';
+import { auth, db } from './firebase';
 import { 
-  requestNotificationPermission, 
-  notifyReportSubmitted, 
-  notifyScheduleChange 
-} from './services/notificationService';
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut 
+} from 'firebase/auth';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  onSnapshot, 
+  query, 
+  where, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc 
+} from 'firebase/firestore';
+import { requestNotificationPermission, notifyReportSubmitted, notifyScheduleChange } from './services/notificationService';
+import { summarizeWorkDescription } from './geminiService'; // Import Gemini service
 import Layout from './components/Layout';
 import Login from './views/Login';
 import Resources from './views/Resources';
@@ -18,147 +33,174 @@ import Schedule from './views/Schedule';
 import AttendanceLog from './views/AttendanceLog';
 
 const DEFAULT_COMPANY: Company = {
-  name: 'CostruGest Demo',
-  legalOffice: 'Via dell\'Edilizia 1, Milano',
-  phone: '02 1234567',
-  email: 'info@costrugest.it',
-  primaryColor: '#2563eb' // Blue-600
+  name: 'Caricamento...',
+  legalOffice: '',
+  phone: '',
+  email: '',
+  primaryColor: '#2563eb'
 };
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('attendance');
+  const [loading, setLoading] = useState(true);
   
-  // App State
-  const [company, setCompany] = useState<Company>(() => {
-    const saved = localStorage.getItem('company_data');
-    return saved ? JSON.parse(saved) : DEFAULT_COMPANY;
-  });
-  
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('users_data');
-    return saved ? JSON.parse(saved) : MOCK_USERS;
-  });
-
-  const [sites, setSites] = useState<Site[]>(MOCK_SITES);
-  const [reports, setReports] = useState<DailyReport[]>(MOCK_REPORTS);
+  const [company, setCompany] = useState<Company>(DEFAULT_COMPANY);
+  const [users, setUsers] = useState<User[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [reports, setReports] = useState<DailyReport[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [schedules, setSchedules] = useState<Record<string, DailySchedule>>({});
 
   useEffect(() => {
     requestNotificationPermission();
+    
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", fbUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as User;
+            setCurrentUser(userData);
+            setupFirestoreListeners(userData.companyId);
+          } else {
+            // Caso utente appena registrato ma doc non ancora pronto
+            setLoading(false);
+          }
+        } catch (e) {
+          console.error("Error fetching user data", e);
+          setLoading(false);
+        }
+      } else {
+        setCurrentUser(null);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribeAuth();
   }, []);
 
-  // Dynamic Branding
+  const setupFirestoreListeners = (companyId: string) => {
+    setLoading(true);
+
+    // 1. Company Data
+    onSnapshot(doc(db, "companies", companyId), (doc) => {
+      if (doc.exists()) setCompany(doc.data() as Company);
+    });
+
+    // 2. Users of same company
+    const qUsers = query(collection(db, "users"), where("companyId", "==", companyId));
+    onSnapshot(qUsers, (snapshot) => {
+      setUsers(snapshot.docs.map(d => d.data() as User));
+    });
+
+    // 3. Sites
+    const qSites = query(collection(db, "sites"), where("companyId", "==", companyId));
+    onSnapshot(qSites, (snapshot) => {
+      setSites(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Site)));
+    });
+
+    // 4. Reports
+    const qReports = query(collection(db, "reports"), where("companyId", "==", companyId));
+    onSnapshot(qReports, (snapshot) => {
+      setReports(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport)));
+    });
+
+    // 5. Attendance
+    const qAttendance = query(collection(db, "attendance"), where("companyId", "==", companyId));
+    onSnapshot(qAttendance, (snapshot) => {
+      setAttendance(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
+    });
+
+    // 6. Schedules
+    const qSchedules = query(collection(db, "schedules"), where("companyId", "==", companyId));
+    onSnapshot(qSchedules, (snapshot) => {
+      const scheduleMap: Record<string, DailySchedule> = {};
+      snapshot.docs.forEach(d => {
+        const data = d.data() as DailySchedule;
+        scheduleMap[data.date] = data;
+      });
+      setSchedules(scheduleMap);
+      setLoading(false);
+    });
+  };
+
   useEffect(() => {
-    document.documentElement.style.setProperty('--primary-color', company.primaryColor);
-    // Calculate a darker version for hover states
-    const darken = (color: string) => {
-      // Simplified darkening logic for HEX
-      return color; 
-    };
-    document.documentElement.style.setProperty('--primary-color-dark', darken(company.primaryColor));
-    
-    // Persist company data
-    localStorage.setItem('company_data', JSON.stringify(company));
+    if (company.primaryColor) {
+      document.documentElement.style.setProperty('--primary-color', company.primaryColor);
+    }
   }, [company]);
 
-  useEffect(() => {
-    localStorage.setItem('users_data', JSON.stringify(users));
-  }, [users]);
-
-  // Derived state
-  const activeAttendance = attendance.find(a => a.userId === currentUser?.id && !a.endTime);
-  const activeSite = sites.find(s => s.id === activeAttendance?.siteId);
-
-  const handleLogin = (email: string, pass: string) => {
-    const user = users.find(u => u.email === email);
-    if (user && (user.password === pass || !user.password)) {
-      setCurrentUser(user);
-      if (user.role === UserRole.WORKER) setActiveTab('attendance');
-      else setActiveTab('active-sites');
-    } else {
-      alert("Credenziali non valide.");
+  const handleLogin = async (email: string, pass: string) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch (error: any) {
+      alert("Errore accesso: " + error.message);
     }
   };
 
-  const handleRegisterNewCompany = (adminData: Partial<User>, companyData: Company) => {
-    const newAdmin: User = {
-      id: `u-admin-${Date.now()}`,
-      firstName: adminData.firstName || '',
-      lastName: adminData.lastName || '',
-      email: adminData.email || '',
-      phone: adminData.phone || '',
-      role: UserRole.ADMIN,
-      password: adminData.password || 'password123'
-    };
-    
-    setCompany(companyData);
-    setUsers([newAdmin]); // Start fresh for new company
-    setCurrentUser(newAdmin);
-    setActiveTab('active-sites');
-    
-    // Reset other states for the new company
-    setSites([]);
-    setReports([]);
-    setAttendance([]);
-    setSchedules({});
+  const handleRegisterNewCompany = async (adminData: Partial<User>, companyData: Company) => {
+    try {
+      setLoading(true);
+      const userCred = await createUserWithEmailAndPassword(auth, adminData.email!, adminData.password!);
+      const uid = userCred.user.uid;
+      const companyId = `comp_${Date.now()}`;
+
+      await setDoc(doc(db, "companies", companyId), { ...companyData, id: companyId });
+
+      const newAdmin: User = {
+        id: uid,
+        companyId: companyId,
+        firstName: adminData.firstName || '',
+        lastName: adminData.lastName || '',
+        email: adminData.email || '',
+        phone: adminData.phone || '',
+        role: UserRole.ADMIN
+      };
+      await setDoc(doc(db, "users", uid), newAdmin);
+      
+      setCurrentUser(newAdmin);
+      setupFirestoreListeners(companyId);
+      setActiveTab('active-sites');
+    } catch (error: any) {
+      alert("Errore registrazione: " + error.message);
+      setLoading(false);
+    }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-  };
+  const handleLogout = () => signOut(auth);
 
-  const addSite = (site: Partial<Site>) => {
-    const newSite: Site = {
-      id: `s-${Date.now()}`,
-      client: site.client || '',
-      address: site.address || '',
-      budget: site.budget || 0,
-      estimatedDays: site.estimatedDays || 0,
+  const addSite = async (site: Partial<Site>) => {
+    if (!currentUser) return;
+    await addDoc(collection(db, "sites"), {
+      ...site,
+      companyId: currentUser.companyId,
       actualDays: 0,
-      isActive: true,
-      quoteUrl: site.quoteUrl,
-      coords: site.coords
-    };
-    setSites([...sites, newSite]);
+      isActive: true
+    });
   };
 
-  const updateSite = (id: string, updates: Partial<Site>) => {
-    setSites(sites.map(s => s.id === id ? { ...s, ...updates } : s));
+  const updateSite = async (id: string, updates: Partial<Site>) => {
+    await updateDoc(doc(db, "sites", id), updates);
   };
 
-  const addUser = (userData: Partial<User>) => {
-    const newUser: User = {
-      id: `u-${Date.now()}`,
-      firstName: userData.firstName || '',
-      lastName: userData.lastName || '',
-      email: userData.email || '',
-      phone: userData.phone || '',
-      role: userData.role || UserRole.WORKER,
-      password: userData.password || 'password123',
-      avatarUrl: userData.avatarUrl
-    };
-    setUsers([...users, newUser]);
+  const addUser = async (userData: Partial<User>) => {
+    if (!currentUser) return;
+    const tempId = `u-${Date.now()}`;
+    await setDoc(doc(db, "users", tempId), {
+      ...userData,
+      id: tempId,
+      companyId: currentUser.companyId,
+    });
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
-    setUsers(users.map(u => u.id === id ? { ...u, ...updates } : u));
-    if (currentUser && id === currentUser.id) {
-      setCurrentUser({ ...currentUser, ...updates });
-    }
-  };
-
-  const removeUser = (id: string) => {
-    setUsers(users.filter(u => u.id !== id));
-  };
-
-  const handleClockIn = (siteId: string, coords: { lat: number, lng: number }) => {
+  const handleClockIn = async (siteId: string, coords: { lat: number, lng: number }) => {
+    if (!currentUser) return;
     const site = sites.find(s => s.id === siteId);
-    if (!site || !currentUser) return;
+    if (!site) return;
 
-    const newRecord: AttendanceRecord = {
-      id: `att-${Date.now()}`,
+    await addDoc(collection(db, "attendance"), {
+      companyId: currentUser.companyId,
       userId: currentUser.id,
       userName: `${currentUser.firstName} ${currentUser.lastName}`,
       siteId: site.id,
@@ -166,78 +208,76 @@ const App: React.FC = () => {
       startTime: new Date().toISOString(),
       startCoords: coords,
       reportSubmitted: false
-    };
-    setAttendance([...attendance, newRecord]);
+    });
   };
 
-  const handleClockOut = (recordId: string, coords: { lat: number, lng: number }) => {
-    setAttendance(attendance.map(a => 
-      a.id === recordId 
-        ? { ...a, endTime: new Date().toISOString(), endCoords: coords } 
-        : a
-    ));
+  const handleClockOut = async (recordId: string, coords: { lat: number, lng: number }) => {
+    await updateDoc(doc(db, "attendance", recordId), {
+      endTime: new Date().toISOString(),
+      endCoords: coords
+    });
   };
 
-  const removeAttendanceRecord = (id: string) => {
-    setAttendance(attendance.filter(a => a.id !== id));
-  };
-
+  // Improved submitReport with Gemini AI summary integration
   const submitReport = async (reportData: Partial<DailyReport>) => {
     if (!currentUser) return;
 
-    const newReport: DailyReport = {
-      id: `${reportData.siteName}-${new Date().toLocaleDateString('it-IT').replace(/\//g, '-')}-${Date.now()}`,
-      siteId: reportData.siteId || '',
-      siteName: reportData.siteName || '',
-      compilerId: currentUser.id,
-      compilerName: `${currentUser.firstName} ${currentUser.lastName}`,
-      workerIds: reportData.workerIds || [],
-      workerNames: reportData.workerNames || [],
-      date: reportData.date || new Date().toISOString().split('T')[0],
-      description: reportData.description || '',
-      notes: reportData.notes || '',
-      photoUrl: reportData.photoUrl,
-      timestamp: new Date().toISOString(),
-      coords: reportData.coords
-    };
+    // Fix: Generate an automated summary using Gemini API
+    let summary = "";
+    if (reportData.description) {
+      try {
+        summary = await summarizeWorkDescription(reportData.description);
+      } catch (err) {
+        console.error("AI summary failed", err);
+      }
+    }
 
-    setReports([...reports, newReport]);
-    notifyReportSubmitted(newReport.compilerName, newReport.siteName);
+    const report: Partial<DailyReport> = {
+      ...reportData,
+      summary,
+      companyId: currentUser.companyId,
+      timestamp: new Date().toISOString()
+    };
+    
+    await addDoc(collection(db, "reports"), report);
+    notifyReportSubmitted(currentUser.firstName, report.siteName || '');
 
     const activeRec = attendance.find(a => a.userId === currentUser.id && !a.endTime);
     if (activeRec) {
-      setAttendance(attendance.map(a => 
-        a.id === activeRec.id 
-          ? { 
-              ...a, 
-              endTime: new Date().toISOString(), 
-              endCoords: reportData.coords, 
-              reportSubmitted: true 
-            } 
-          : a
-      ));
+      await updateDoc(doc(db, "attendance", activeRec.id), {
+        endTime: new Date().toISOString(),
+        endCoords: reportData.coords,
+        reportSubmitted: true
+      });
     }
 
-    setSites(sites.map(s => 
-      s.id === reportData.siteId 
-        ? { ...s, actualDays: s.actualDays + 1 } 
-        : s
-    ));
-
+    if (reportData.siteId) {
+      const site = sites.find(s => s.id === reportData.siteId);
+      if (site) {
+        await updateDoc(doc(db, "sites", site.id), { actualDays: site.actualDays + 1 });
+      }
+    }
     setActiveTab('attendance');
   };
 
-  const handleUpdateSchedule = (date: string, schedule: DailySchedule) => {
-    setSchedules(prev => ({
-      ...prev,
-      [date]: schedule
-    }));
+  const handleUpdateSchedule = async (date: string, schedule: DailySchedule) => {
+    if (!currentUser) return;
+    await setDoc(doc(db, "schedules", `${currentUser.companyId}_${date}`), {
+      ...schedule,
+      companyId: currentUser.companyId,
+      date: date
+    });
     notifyScheduleChange();
   };
+
+  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white">Inizializzazione CostruGest...</div>;
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} onRegisterCompany={handleRegisterNewCompany} users={users} />;
   }
+
+  const activeAttendance = attendance.find(a => a.userId === currentUser.id && !a.endTime);
+  const activeSite = sites.find(s => s.id === activeAttendance?.siteId);
 
   return (
     <Layout 
@@ -274,7 +314,7 @@ const App: React.FC = () => {
           attendance={attendance}
           reports={reports}
           sites={sites}
-          onRemoveRecord={removeAttendanceRecord}
+          onRemoveRecord={async (id) => await deleteDoc(doc(db, "attendance", id))}
         />
       )}
       {activeTab === 'resources' && (
@@ -282,10 +322,10 @@ const App: React.FC = () => {
           currentUser={currentUser} 
           users={users} 
           company={company}
-          onUpdateCompany={setCompany}
+          onUpdateCompany={async (c) => await updateDoc(doc(db, "companies", currentUser.companyId), c as any)}
           onAddUser={addUser} 
-          onUpdateUser={updateUser}
-          onRemoveUser={removeUser}
+          onUpdateUser={async (id, u) => await updateDoc(doc(db, "users", id), u)}
+          onRemoveUser={async (id) => await deleteDoc(doc(db, "users", id))}
         />
       )}
       {activeTab === 'active-sites' && (

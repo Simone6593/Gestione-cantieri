@@ -6,6 +6,7 @@ export enum UserRole {
 }
 
 export interface Company {
+  id?: string;
   name: string;
   legalOffice: string;
   phone: string;
@@ -16,6 +17,7 @@ export interface Company {
 
 export interface User {
   id: string;
+  companyId: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -27,6 +29,7 @@ export interface User {
 
 export interface Site {
   id: string;
+  companyId: string;
   client: string;
   address: string;
   budget: number;
@@ -39,6 +42,7 @@ export interface Site {
 
 export interface AttendanceRecord {
   id: string;
+  companyId: string;
   userId: string;
   userName: string;
   siteId: string;
@@ -52,6 +56,7 @@ export interface AttendanceRecord {
 
 export interface DailyReport {
   id: string;
+  companyId: string;
   siteId: string;
   siteName: string;
   compilerId: string;
@@ -68,11 +73,12 @@ export interface DailyReport {
 }
 
 export interface DailySchedule {
+  companyId: string;
   date: string;
-  siteAssignments: Record<string, string[]>; // siteId: [workerId]
+  siteAssignments: Record<string, string[]>; 
   offDuty: {
     holidays: string[];
     sickness: string[];
   };
-  notes: Record<string, string>; // siteId: notes
+  notes: Record<string, string>;
 }
