@@ -18,7 +18,7 @@ export interface Company {
 
 export interface User {
   id: string;
-  companyId: string;
+  aziendaId: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -30,7 +30,7 @@ export interface User {
 
 export interface Site {
   id: string;
-  companyId: string;
+  aziendaId: string;
   client: string;
   address: string;
   budget: number;
@@ -43,7 +43,7 @@ export interface Site {
 
 export interface AttendanceRecord {
   id: string;
-  companyId: string;
+  aziendaId: string;
   userId: string;
   userName: string;
   siteId: string;
@@ -57,7 +57,7 @@ export interface AttendanceRecord {
 
 export interface DailyReport {
   id: string;
-  companyId: string;
+  aziendaId: string;
   siteId: string;
   siteName: string;
   compilerId: string;
@@ -74,7 +74,7 @@ export interface DailyReport {
 }
 
 export interface DailySchedule {
-  companyId: string;
+  aziendaId: string;
   date: string;
   siteAssignments: Record<string, string[]>; 
   offDuty: {

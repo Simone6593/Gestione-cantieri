@@ -45,12 +45,20 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
 
   const canEdit = currentUser.role === UserRole.ADMIN;
 
-  // RECUPERO DATI AZIENDA: Carica i dati dal database Firestore all'apertura della sezione azienda
+  // Se aziendaId non è ancora disponibile (molto raro grazie ad App.tsx), mostriamo caricamento
+  if (!currentUser.aziendaId) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   useEffect(() => {
-    if (activeView === 'company' && currentUser.companyId) {
+    if (activeView === 'company' && currentUser.aziendaId) {
       const fetchCompanyData = async () => {
         try {
-          const docRef = doc(db, 'aziende', currentUser.companyId);
+          const docRef = doc(db, 'aziende', currentUser.aziendaId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data() as Company;
@@ -62,7 +70,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
       };
       fetchCompanyData();
     }
-  }, [activeView, currentUser.companyId]);
+  }, [activeView, currentUser.aziendaId]);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -159,7 +167,6 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
     }
   };
 
-  // FUNZIONE SALVA AZIENDA: Invia i dati a Firestore con setDoc merge: true
   const handleSaveCompany = async () => {
     setIsSaving(true);
     try {

@@ -62,31 +62,22 @@ const App: React.FC = () => {
   const [schedules, setSchedules] = useState<Record<string, DailySchedule>>({});
 
   useEffect(() => {
-    // 1. Forza la persistenza di sessione (cancella login alla chiusura scheda/browser)
     setPersistence(auth, browserSessionPersistence).catch(console.error);
-
-    // 2. Pulizia "Cache" e dati locali all'avvio per garantire il ritorno al login ogni volta
     localStorage.clear();
-    if ('caches' in window) {
-      caches.keys().then(names => {
-        for (let name of names) caches.delete(name);
-      });
-    }
-
     requestNotificationPermission();
     
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
-          let userDocRef = doc(db, "users", fbUser.uid);
+          // Utilizziamo la collezione 'team' per i profili utente
+          let userDocRef = doc(db, "team", fbUser.uid);
           let userDoc = await getDoc(userDocRef);
           
-          // TABELLA UTENTI: Se non esiste il documento, lo creiamo e generiamo un aziendaId univoco
           if (!userDoc.exists()) {
-            const newCompanyId = `azienda_${Date.now()}`;
+            const newAziendaId = `azienda_${Date.now()}`;
             const newUserDoc = {
               id: fbUser.uid,
-              companyId: newCompanyId,
+              aziendaId: newAziendaId,
               email: fbUser.email || '',
               firstName: fbUser.displayName?.split(' ')[0] || 'Nuovo',
               lastName: fbUser.displayName?.split(' ')[1] || 'Utente',
@@ -100,7 +91,6 @@ const App: React.FC = () => {
 
           const userData = userDoc.data() as User & { isActive?: boolean };
           
-          // Verifica stato account
           if (userData.isActive === false) {
             await signOut(auth);
             setCurrentUser(null);
@@ -108,16 +98,14 @@ const App: React.FC = () => {
             return;
           }
 
-          // VERIFICA: Log dell'ID Azienda caricato come richiesto
-          console.log('Azienda ID caricato:', userData.companyId);
-
+          console.log('Azienda ID caricato:', userData.aziendaId);
           const fullUser = { ...userData, id: fbUser.uid };
           setCurrentUser(fullUser);
           
           if (userData.role === UserRole.WORKER) setActiveTab('attendance');
           else setActiveTab('attendance-log');
           
-          setupFirestoreListeners(userData.companyId);
+          setupFirestoreListeners(userData.aziendaId);
         } catch (e) {
           console.error("Error fetching user data", e);
           setLoading(false);
@@ -131,40 +119,38 @@ const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  const setupFirestoreListeners = (companyId: string) => {
+  const setupFirestoreListeners = (aziendaId: string) => {
     setLoading(true);
 
-    // Sincronizzazione con la collezione 'aziende'
-    onSnapshot(doc(db, "aziende", companyId), (doc) => {
+    // Sincronizzazione dati Azienda
+    onSnapshot(doc(db, "aziende", aziendaId), (doc) => {
       if (doc.exists()) setCompany({ ...doc.data(), id: doc.id } as Company);
-      else {
-        // Se l'azienda non esiste ancora in Firestore (nuovo account), impostiamo valori base
-        setCompany({ ...DEFAULT_COMPANY, id: companyId, name: 'Nuova Azienda' });
-      }
+      else setCompany({ ...DEFAULT_COMPANY, id: aziendaId, name: 'Nuova Azienda' });
     });
 
-    // Filtriamo tutti i dati globalmente tramite aziendaId
-    const qUsers = query(collection(db, "users"), where("companyId", "==", companyId), where("isActive", "==", true));
-    onSnapshot(qUsers, (snapshot) => {
+    // Filtro Team specifico per aziendaId
+    const qTeam = query(collection(db, "team"), where("aziendaId", "==", aziendaId), where("isActive", "==", true));
+    onSnapshot(qTeam, (snapshot) => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
     });
 
-    const qSites = query(collection(db, "sites"), where("companyId", "==", companyId));
+    // Altri dati filtrati per aziendaId
+    const qSites = query(collection(db, "sites"), where("aziendaId", "==", aziendaId));
     onSnapshot(qSites, (snapshot) => {
       setSites(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Site)));
     });
 
-    const qReports = query(collection(db, "reports"), where("companyId", "==", companyId));
+    const qReports = query(collection(db, "reports"), where("aziendaId", "==", aziendaId));
     onSnapshot(qReports, (snapshot) => {
       setReports(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport)));
     });
 
-    const qAttendance = query(collection(db, "attendance"), where("companyId", "==", companyId));
+    const qAttendance = query(collection(db, "attendance"), where("aziendaId", "==", aziendaId));
     onSnapshot(qAttendance, (snapshot) => {
       setAttendance(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
     });
 
-    const qSchedules = query(collection(db, "schedules"), where("companyId", "==", companyId));
+    const qSchedules = query(collection(db, "schedules"), where("aziendaId", "==", aziendaId));
     onSnapshot(qSchedules, (snapshot) => {
       const scheduleMap: Record<string, DailySchedule> = {};
       snapshot.docs.forEach(d => {
@@ -185,7 +171,7 @@ const App: React.FC = () => {
   const handleLogin = async (email: string, pass: string) => {
     await setPersistence(auth, browserSessionPersistence);
     const userCred = await signInWithEmailAndPassword(auth, email, pass);
-    const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
+    const userDoc = await getDoc(doc(db, "team", userCred.user.uid));
     
     if (userDoc.exists()) {
       const userData = userDoc.data() as any;
@@ -207,14 +193,13 @@ const App: React.FC = () => {
       const userCred = await createUserWithEmailAndPassword(auth, adminData.email!, adminData.password!);
       const uid = userCred.user.uid;
       
-      const companyId = `azienda_${Date.now()}`;
+      const aziendaId = `azienda_${Date.now()}`;
 
-      // Salvataggio nella collezione 'aziende'
-      await setDoc(doc(db, "aziende", companyId), { ...companyData, id: companyId });
+      await setDoc(doc(db, "aziende", aziendaId), { ...companyData, id: aziendaId });
 
       const newAdmin: User & { isActive: boolean } = {
         id: uid,
-        companyId: companyId,
+        aziendaId: aziendaId,
         firstName: adminData.firstName || '',
         lastName: adminData.lastName || '',
         email: adminData.email || '',
@@ -222,13 +207,11 @@ const App: React.FC = () => {
         role: UserRole.ADMIN,
         isActive: true
       };
-      await setDoc(doc(db, "users", uid), newAdmin);
-      
-      console.log('Azienda ID registrato:', companyId);
+      await setDoc(doc(db, "team", uid), newAdmin);
       
       setCurrentUser(newAdmin);
       setActiveTab('attendance-log');
-      setupFirestoreListeners(companyId);
+      setupFirestoreListeners(aziendaId);
     } catch (error: any) {
       alert("Errore registrazione: " + error.message);
       setLoading(false);
@@ -239,15 +222,14 @@ const App: React.FC = () => {
 
   const handleUpdateCompany = async (companyData: Company) => {
     if (!currentUser) return;
-    // Uso setDoc con merge per aggiornare i dati dell'azienda
-    await setDoc(doc(db, "aziende", currentUser.companyId), companyData, { merge: true });
+    await setDoc(doc(db, "aziende", currentUser.aziendaId), companyData, { merge: true });
   };
 
   const addSite = async (site: Partial<Site>) => {
     if (!currentUser) return;
     await addDoc(collection(db, "sites"), {
       ...site,
-      companyId: currentUser.companyId,
+      aziendaId: currentUser.aziendaId,
       actualDays: 0,
       isActive: true
     });
@@ -264,7 +246,8 @@ const App: React.FC = () => {
 
   const addUser = async (userData: Partial<User> & { password?: string }) => {
     if (!currentUser) return;
-    const q = query(collection(db, "users"), where("email", "==", userData.email));
+    // Query filtrata sulla nuova collezione 'team'
+    const q = query(collection(db, "team"), where("email", "==", userData.email));
     const existingDocs = await getDocs(q);
     
     if (!existingDocs.empty) {
@@ -272,10 +255,10 @@ const App: React.FC = () => {
       if (docData.isActive === false) {
         if (!confirm(`L'email ${userData.email} era precedentemente bloccata. Riattivare?`)) return;
         const uid = existingDocs.docs[0].id;
-        await updateDoc(doc(db, "users", uid), {
+        await updateDoc(doc(db, "team", uid), {
           ...userData,
           isActive: true,
-          companyId: currentUser.companyId,
+          aziendaId: currentUser.aziendaId,
         });
         return uid;
       } else {
@@ -304,11 +287,12 @@ const App: React.FC = () => {
       
       const newUid = userCred.user.uid;
       const { password, ...profileData } = userData;
-      await setDoc(doc(db, "users", newUid), {
+      // Inserimento automatico aziendaId nel nuovo documento del team
+      await setDoc(doc(db, "team", newUid), {
         ...profileData,
         id: newUid,
         isActive: true,
-        companyId: currentUser.companyId,
+        aziendaId: currentUser.aziendaId,
       });
 
       await signOut(secondaryAuth);
@@ -320,12 +304,12 @@ const App: React.FC = () => {
   };
 
   const handleUpdateUser = async (id: string, updates: Partial<User>) => {
-    await updateDoc(doc(db, "users", id), updates);
+    await updateDoc(doc(db, "team", id), updates);
   };
 
   const handleRemoveUser = async (id: string) => {
     if (!confirm("Sei sicuro di voler bloccare questo utente?")) return;
-    await updateDoc(doc(db, "users", id), { isActive: false });
+    await updateDoc(doc(db, "team", id), { isActive: false });
   };
 
   const handleClockIn = async (siteId: string, coords: { lat: number, lng: number }) => {
@@ -334,7 +318,7 @@ const App: React.FC = () => {
     if (!site) return;
 
     await addDoc(collection(db, "attendance"), {
-      companyId: currentUser.companyId,
+      aziendaId: currentUser.aziendaId,
       userId: currentUser.id,
       userName: `${currentUser.firstName} ${currentUser.lastName}`,
       siteId: site.id,
@@ -371,7 +355,7 @@ const App: React.FC = () => {
     const report: Partial<DailyReport> = {
       ...reportData,
       summary,
-      companyId: currentUser.companyId,
+      aziendaId: currentUser.aziendaId,
       timestamp: new Date().toISOString()
     };
     
@@ -398,15 +382,20 @@ const App: React.FC = () => {
 
   const handleUpdateSchedule = async (date: string, schedule: DailySchedule) => {
     if (!currentUser) return;
-    await setDoc(doc(db, "schedules", `${currentUser.companyId}_${date}`), {
+    await setDoc(doc(db, "schedules", `${currentUser.aziendaId}_${date}`), {
       ...schedule,
-      companyId: currentUser.companyId,
+      aziendaId: currentUser.aziendaId,
       date: date
     });
     notifyScheduleChange();
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white font-bold tracking-widest animate-pulse">COSTRUGEST...</div>;
+  if (loading) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest">
+      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+      COSTRUGEST...
+    </div>
+  );
 
   if (!currentUser) {
     return (

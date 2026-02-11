@@ -21,9 +21,9 @@ const Schedule: React.FC<ScheduleProps> = ({ currentUser, sites, workers, schedu
   const isReadOnly = currentUser.role === UserRole.WORKER;
   const dateKey = currentDate.toISOString().split('T')[0];
   
-  // Fix: Added missing companyId and cast empty arrays to string[] to satisfy DailySchedule type
+  // Fix: Use 'aziendaId' instead of 'companyId' as defined in types.ts
   const currentSchedule: DailySchedule = schedules[dateKey] || {
-    companyId: currentUser.companyId,
+    aziendaId: currentUser.aziendaId,
     date: dateKey,
     siteAssignments: {},
     offDuty: { holidays: [] as string[], sickness: [] as string[] },
