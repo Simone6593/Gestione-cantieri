@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const Card: React.FC<{ 
   children: React.ReactNode; 
@@ -34,7 +35,6 @@ export const Button: React.FC<{
     ghost: "bg-transparent text-slate-600 hover:bg-slate-100"
   };
 
-  // Inline style for dynamic primary color
   const dynamicStyle = variant === 'primary' ? {
     backgroundColor: 'var(--primary-color)',
   } : {};
@@ -84,3 +84,41 @@ export const Input: React.FC<{
     </div>
   </div>
 );
+
+export const Modal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  message: string;
+  type?: 'error' | 'success' | 'info';
+}> = ({ isOpen, onClose, title, message, type = 'info' }) => {
+  if (!isOpen) return null;
+
+  const colors = {
+    error: { bg: 'bg-red-50', text: 'text-red-800', icon: 'text-red-500', border: 'border-red-100', btn: 'bg-red-600' },
+    success: { bg: 'bg-green-50', text: 'text-green-800', icon: 'text-green-500', border: 'border-green-100', btn: 'bg-green-600' },
+    info: { bg: 'bg-blue-50', text: 'text-blue-800', icon: 'text-blue-500', border: 'border-blue-100', btn: 'bg-blue-600' }
+  };
+
+  const theme = colors[type];
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <Card className={`w-full max-w-sm p-6 relative animate-in zoom-in duration-300 ${theme.bg} ${theme.border}`}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">
+          <X size={20} />
+        </button>
+        <div className="flex flex-col items-center text-center">
+          <div className={`mb-4 ${theme.icon}`}>
+            {type === 'error' ? <AlertCircle size={48} /> : <CheckCircle2 size={48} />}
+          </div>
+          <h3 className={`text-xl font-bold mb-2 ${theme.text}`}>{title}</h3>
+          <p className="text-sm text-slate-600 mb-6">{message}</p>
+          <Button onClick={onClose} className={`w-full ${theme.btn} text-white hover:opacity-90`}>
+            Chiudi
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+};

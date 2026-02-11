@@ -9,7 +9,8 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut,
-  getAuth
+  getAuth,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   collection, 
@@ -19,6 +20,7 @@ import {
   onSnapshot, 
   query, 
   where, 
+  getDocs,
   addDoc, 
   updateDoc, 
   deleteDoc 
@@ -34,6 +36,7 @@ import DailyReportForm from './views/DailyReport';
 import ArchivedReports from './views/ArchivedReports';
 import Schedule from './views/Schedule';
 import AttendanceLog from './views/AttendanceLog';
+import Options from './views/Options';
 
 const DEFAULT_COMPANY: Company = {
   name: 'Caricamento...',
@@ -63,16 +66,21 @@ const App: React.FC = () => {
         try {
           const userDoc = await getDoc(doc(db, "users", fbUser.uid));
           if (userDoc.exists()) {
-            const userData = userDoc.data() as User;
+            const userData = userDoc.data() as User & { isActive?: boolean };
+            
+            // BLOCCO ACCESSO SE DISATTIVATO
+            if (userData.isActive === false) {
+              await signOut(auth);
+              setCurrentUser(null);
+              setLoading(false);
+              return;
+            }
+
             const fullUser = { ...userData, id: fbUser.uid };
             setCurrentUser(fullUser);
             
-            // Reindirizzamento basato sul ruolo al caricamento iniziale
-            if (userData.role === UserRole.WORKER) {
-              setActiveTab('attendance');
-            } else {
-              setActiveTab('attendance-log');
-            }
+            if (userData.role === UserRole.WORKER) setActiveTab('attendance');
+            else setActiveTab('attendance-log');
             
             setupFirestoreListeners(userData.companyId);
           } else {
@@ -98,7 +106,8 @@ const App: React.FC = () => {
       if (doc.exists()) setCompany(doc.data() as Company);
     });
 
-    const qUsers = query(collection(db, "users"), where("companyId", "==", companyId));
+    // Filtriamo per mostrare solo utenti attivi nel team
+    const qUsers = query(collection(db, "users"), where("companyId", "==", companyId), where("isActive", "==", true));
     onSnapshot(qUsers, (snapshot) => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
     });
@@ -137,21 +146,20 @@ const App: React.FC = () => {
   }, [company]);
 
   const handleLogin = async (email: string, pass: string) => {
-    try {
-      const userCred = await signInWithEmailAndPassword(auth, email, pass);
-      const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as User;
-        // Reindirizzamento immediato dopo il login
-        if (userData.role === UserRole.WORKER) {
-          setActiveTab('attendance');
-        } else {
-          setActiveTab('attendance-log');
-        }
+    const userCred = await signInWithEmailAndPassword(auth, email, pass);
+    const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data() as any;
+      if (userData.isActive === false) {
+        await signOut(auth);
+        throw { code: 'auth/user-disabled' };
       }
-    } catch (error: any) {
-      alert("Errore accesso: " + error.message);
     }
+  };
+
+  const handlePasswordReset = async (email: string) => {
+    await sendPasswordResetEmail(auth, email);
   };
 
   const handleRegisterNewCompany = async (adminData: Partial<User>, companyData: Company) => {
@@ -163,19 +171,20 @@ const App: React.FC = () => {
 
       await setDoc(doc(db, "companies", companyId), { ...companyData, id: companyId });
 
-      const newAdmin: User = {
+      const newAdmin: User & { isActive: boolean } = {
         id: uid,
         companyId: companyId,
         firstName: adminData.firstName || '',
         lastName: adminData.lastName || '',
         email: adminData.email || '',
         phone: adminData.phone || '',
-        role: UserRole.ADMIN
+        role: UserRole.ADMIN,
+        isActive: true
       };
       await setDoc(doc(db, "users", uid), newAdmin);
       
       setCurrentUser(newAdmin);
-      setActiveTab('attendance-log'); // Admin atterra su Registro
+      setActiveTab('attendance-log');
       setupFirestoreListeners(companyId);
     } catch (error: any) {
       alert("Errore registrazione: " + error.message);
@@ -200,12 +209,35 @@ const App: React.FC = () => {
   };
 
   const removeSite = async (id: string) => {
-    if (!confirm("Sei sicuro di voler eliminare questo cantiere? Tutti i dati associati potrebbero andare persi.")) return;
+    if (!confirm("Sei sicuro di voler eliminare questo cantiere?")) return;
     await deleteDoc(doc(db, "sites", id));
   };
 
   const addUser = async (userData: Partial<User> & { password?: string }) => {
     if (!currentUser) return;
+
+    // CONTROLLO SE ESISTE GIÀ UN ACCOUNT (ATTIVO O DISATTIVATO)
+    const q = query(collection(db, "users"), where("email", "==", userData.email));
+    const existingDocs = await getDocs(q);
+    
+    if (!existingDocs.empty) {
+      const docData = existingDocs.docs[0].data() as any;
+      if (docData.isActive === false) {
+        // RIATTIVAZIONE
+        if (!confirm(`L'email ${userData.email} era precedentemente bloccata. Vuoi riattivarla con i nuovi dati? (Nota: la password rimarrà quella vecchia, l'utente potrà resettarla se dimenticata).`)) {
+          return;
+        }
+        const uid = existingDocs.docs[0].id;
+        await updateDoc(doc(db, "users", uid), {
+          ...userData,
+          isActive: true,
+          companyId: currentUser.companyId, // Assicuriamoci che sia nella stessa azienda
+        });
+        return uid;
+      } else {
+        throw new Error("L'utente esiste già ed è attivo.");
+      }
+    }
     
     const secondaryConfig = {
       apiKey: "AIzaSyDTn3FOP59TOUl0Vj0LA8NzIXPAJoX5HFg",
@@ -231,6 +263,7 @@ const App: React.FC = () => {
       await setDoc(doc(db, "users", newUid), {
         ...profileData,
         id: newUid,
+        isActive: true,
         companyId: currentUser.companyId,
       });
 
@@ -247,17 +280,12 @@ const App: React.FC = () => {
   };
 
   const handleRemoveUser = async (id: string) => {
-    if (!confirm("Sei sicuro di voler rimuovere questo utente? L'accesso verrà disabilitato rimuovendo il suo profilo da Firestore.")) return;
-    
+    if (!confirm("Sei sicuro di voler bloccare questo utente? L'accesso verrà revocato immediatamente.")) return;
     try {
-      // Rimuoviamo il profilo da Firestore
-      // Nota: Per eliminare l'utente anche da Firebase Auth via client-side, 
-      // servirebbe che l'utente fosse loggato o usare Firebase Admin SDK (Cloud Functions).
-      // Eliminando il documento in 'users', l'utente non potrà più caricare i dati dell'app
-      // poiché il sistema di routing e permessi si basa su questo documento.
-      await deleteDoc(doc(db, "users", id));
+      // SOFT DELETE: Disattiviamo invece di eliminare
+      await updateDoc(doc(db, "users", id), { isActive: false });
     } catch (error: any) {
-      alert("Errore durante la rimozione: " + error.message);
+      alert("Errore durante il blocco: " + error.message);
     }
   };
 
@@ -335,10 +363,17 @@ const App: React.FC = () => {
     notifyScheduleChange();
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white">Inizializzazione CostruGest...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-900 text-white font-bold tracking-widest animate-pulse">COSTRUGEST...</div>;
 
   if (!currentUser) {
-    return <Login onLogin={handleLogin} onRegisterCompany={handleRegisterNewCompany} users={users} />;
+    return (
+      <Login 
+        onLogin={handleLogin} 
+        onRegisterCompany={handleRegisterNewCompany} 
+        onPasswordReset={handlePasswordReset}
+        users={users} 
+      />
+    );
   }
 
   const activeAttendance = attendance.find(a => a.userId === currentUser.id && !a.endTime);
@@ -424,6 +459,9 @@ const App: React.FC = () => {
           schedules={schedules}
           onUpdateSchedule={handleUpdateSchedule}
         />
+      )}
+      {activeTab === 'options' && (
+        <Options user={currentUser} company={company} />
       )}
     </Layout>
   );

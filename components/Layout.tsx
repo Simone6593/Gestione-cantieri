@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, ClipboardCheck, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info
+  Users, Construction, Archive, Clock, ClipboardCheck, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -28,6 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
     { id: 'completed-sites', label: 'Cantieri Conclusi', icon: Archive, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'archived-reports', label: 'Archivio Rapportini', icon: Archive, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'schedule', label: 'Programma', icon: CalendarDays, roles: [UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.WORKER] },
+    { id: 'options', label: 'Opzioni', icon: Settings, roles: [UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.WORKER] },
   ];
 
   const visibleItems = navItems.filter(item => item.roles.includes(user.role));
@@ -35,17 +35,18 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   const getGuide = () => {
     const guides: Record<string, {title: string, steps: string[]}> = {
       attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "La 'Fine' si timbra automaticamente con il rapportino."] },
-      resources: { title: "Gestione Team", steps: ["Aggiungi nuovi operai con il tasto '+'.", "Invia le credenziali via WhatsApp.", "Usa 'Profilo Azienda' per il branding."] },
-      schedule: { title: "Programma Lavori", steps: ["Trascina i nomi dai disponibili ai cantieri.", "Swipe a destra/sinistra per cambiare data.", "Invia il riepilogo al gruppo WhatsApp aziendale."] }
+      resources: { title: "Gestione Team", steps: ["Aggiungi nuovi operai con il tasto '+'.", "L'eliminazione blocca l'accesso ai dati.", "Usa 'Profilo Azienda' per il branding."] },
+      schedule: { title: "Programma Lavori", steps: ["Trascina i nomi dai disponibili ai cantieri.", "Swipe a destra/sinistra per cambiare data.", "Invia il riepilogo al gruppo WhatsApp aziendale."] },
+      options: { title: "Il Tuo Account", steps: ["Aggiorna qui la tua password personale.", "Assicurati che sia lunga almeno 6 caratteri.", "La sicurezza è priorità."] }
     };
-    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Clicca sull'icona aiuto per spiegazioni specifiche.", "Contatta l'admin per permessi aggiuntivi."] };
+    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Controlla le opzioni per la tua sicurezza.", "Contatta l'admin per permessi aggiuntivi."] };
   };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <aside className={`fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 text-white transform transition-transform z-50 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          {company.logoUrl ? <img src={company.logoUrl} className="w-10 h-10 object-contain bg-white rounded p-1" /> : <div className="w-10 h-10 bg-[var(--primary-color)] rounded-lg flex items-center justify-center font-bold">{company.name[0]}</div>}
+          {company.logoUrl ? <img src={company.logoUrl} className="w-10 h-10 object-contain bg-white rounded p-1" /> : <div className="w-10 h-10 bg-[var(--primary-color)] rounded-lg flex items-center justify-center font-bold uppercase">{company.name[0]}</div>}
           <span className="font-bold truncate">{company.name}</span>
         </div>
         <nav className="p-4 space-y-2 flex-1 overflow-y-auto">
@@ -56,7 +57,7 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
           ))}
         </nav>
         <div className="p-4 border-t border-slate-800">
-           <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-lg"><LogOut size={20} /> Logout</button>
+           <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-lg transition-all active:scale-95"><LogOut size={20} /> Logout</button>
         </div>
       </aside>
 
@@ -73,11 +74,11 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
         {isGuideOpen && (
           <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-6 backdrop-blur-sm">
-            <Card className="w-full max-w-sm p-6 relative">
-              <button onClick={() => setIsGuideOpen(false)} className="absolute top-4 right-4"><X size={20} /></button>
+            <Card className="w-full max-w-sm p-6 relative animate-in zoom-in duration-200">
+              <button onClick={() => setIsGuideOpen(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={20} /></button>
               <div className="flex items-center gap-3 mb-4 text-blue-600"><Info /> <h3 className="font-bold text-xl">{getGuide().title}</h3></div>
               <ul className="space-y-3">{getGuide().steps.map((s, i) => <li key={i} className="text-sm text-slate-600 flex gap-2"><span className="font-bold text-blue-600">{i+1}.</span> {s}</li>)}</ul>
-              <Button onClick={() => setIsGuideOpen(false)} className="w-full mt-6">Chiudi</Button>
+              <Button onClick={() => setIsGuideOpen(false)} className="w-full mt-6">Ho Capito</Button>
             </Card>
           </div>
         )}
