@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company } from './types';
 import { auth, db } from './firebase';
@@ -222,7 +221,7 @@ const App: React.FC = () => {
   const submitReport = async (reportData: Partial<DailyReport>) => {
     if (!currentUser) return;
 
-    // Fix: Generate an automated summary using Gemini API
+    // Fix: Ensure description is a string before passing to summarizer
     let summary = "";
     if (reportData.description) {
       try {

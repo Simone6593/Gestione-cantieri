@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 // Fix: Implement summarization using Gemini API as per coding guidelines
 /**
@@ -10,12 +10,12 @@ import { GoogleGenAI } from "@google/genai";
 export const summarizeWorkDescription = async (description: string): Promise<string> => {
   if (!description || description.trim().length < 5) return "";
 
-  // Always initialize GoogleGenAI using the process.env.API_KEY
+  // Always initialize GoogleGenAI inside the function using the process.env.API_KEY
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   try {
     // Basic text summarization task: use 'gemini-3-flash-preview'
-    const response = await ai.models.generateContent({
+    const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Riassumi professionalmente in italiano questa descrizione di un lavoro di cantiere in massimo 10 parole: "${description}"`,
     });

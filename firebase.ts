@@ -1,8 +1,7 @@
-// Fix: Use standard Firebase v9+ modular imports and clean up formatting to ensure correct module resolution
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getAnalytics } from "firebase/analytics";
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getAnalytics } from 'firebase/analytics';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDTn3FOP59TOUl0Vj0LA8NzIXPAJoX5HFg",
@@ -14,12 +13,14 @@ const firebaseConfig = {
   measurementId: "G-GWG9R74PLT"
 };
 
-// Initialize Firebase application
+// Fix: Use the standard initializeApp from the modular SDK
 const app = initializeApp(firebaseConfig);
 
-// Export modular instances
+// Esporta le istanze dei servizi legandole all'app inizializzata
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Inizializzazione sicura per Analytics
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 
 export default app;
