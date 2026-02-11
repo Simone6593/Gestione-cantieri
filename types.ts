@@ -8,6 +8,7 @@ export enum UserRole {
 export interface Company {
   id?: string;
   name: string;
+  vatNumber?: string; // Partita IVA
   legalOffice: string;
   phone: string;
   email: string;

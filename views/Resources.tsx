@@ -1,18 +1,20 @@
-import React, { useState, useRef } from 'react';
+
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, Company } from '../types';
 import { 
   UserPlus, Trash2, Mail, MessageSquare, Phone, Eye, EyeOff, 
-  Camera, Building2, Palette, Save, X, Shield, Lock, User as UserIcon, Edit2
+  Camera, Building2, Palette, Save, X, Shield, Lock, User as UserIcon, Edit2, Hash
 } from 'lucide-react';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { updatePassword } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface ResourcesProps {
   currentUser: User;
   users: User[];
   company: Company;
-  onUpdateCompany: (c: Company) => void;
+  onUpdateCompany: (c: Company) => Promise<void>;
   onAddUser: (user: Partial<User> & { password?: string }) => void;
   onUpdateUser: (id: string, updates: Partial<User>) => void;
   onRemoveUser: (id: string) => void;
@@ -43,6 +45,25 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
 
   const canEdit = currentUser.role === UserRole.ADMIN;
 
+  // RECUPERO DATI AZIENDA: Carica i dati dal database Firestore all'apertura della sezione azienda
+  useEffect(() => {
+    if (activeView === 'company' && currentUser.companyId) {
+      const fetchCompanyData = async () => {
+        try {
+          const docRef = doc(db, 'aziende', currentUser.companyId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data() as Company;
+            setCompanyEdit({ ...data, id: docSnap.id });
+          }
+        } catch (error) {
+          console.error("Errore recupero dati azienda:", error);
+        }
+      };
+      fetchCompanyData();
+    }
+  }, [activeView, currentUser.companyId]);
+
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -61,7 +82,6 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
     
     setIsSaving(true);
     try {
-      // Pass the entire formData including password to onAddUser
       await onAddUser(formData);
       alert(`Utente ${formData.firstName} creato correttamente. Ora può accedere con la sua email.`);
       setFormData({
@@ -136,6 +156,19 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
       alert("Errore durante l'aggiornamento: " + error.message);
     } finally {
       setIsChangingPass(false);
+    }
+  };
+
+  // FUNZIONE SALVA AZIENDA: Invia i dati a Firestore con setDoc merge: true
+  const handleSaveCompany = async () => {
+    setIsSaving(true);
+    try {
+      await onUpdateCompany(companyEdit);
+      alert("Dati salvati correttamente!");
+    } catch (error: any) {
+      alert("Errore durante il salvataggio: " + error.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -215,11 +248,6 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                   </Button>
                 </div>
               </form>
-              {!editingUser && (
-                <p className="text-[10px] text-blue-600 mt-4 italic">
-                  * Verrà creato un account di accesso reale. L'utente potrà loggarsi immediatamente con questa email e password.
-                </p>
-              )}
             </Card>
           )}
 
@@ -350,10 +378,10 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
         <Card className="p-8 max-w-2xl mx-auto shadow-lg border-slate-100">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
-              <Building2 className="text-blue-600" /> Configurazione Branding
+              <Building2 className="text-blue-600" /> Dati Azienda
             </h3>
-            <Button onClick={() => { onUpdateCompany(companyEdit); alert("Impostazioni salvate!"); }}>
-              <Save size={18}/> Salva
+            <Button onClick={handleSaveCompany} disabled={isSaving}>
+              <Save size={18}/> {isSaving ? "Salvataggio..." : "Salva"}
             </Button>
           </div>
           
@@ -366,12 +394,12 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                 {companyEdit.logoUrl ? (
                   <>
                     <img src={companyEdit.logoUrl} className="w-full h-full object-contain p-2" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Cambia</div>
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Cambia Logo</div>
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-2">
                     <Camera className="text-slate-300" />
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Logo</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Carica Logo</span>
                   </div>
                 )}
               </div>
@@ -379,7 +407,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
               
               <div className="w-full">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-                  <Palette size={12} /> Colore App
+                  <Palette size={12} /> Colore Brand
                 </label>
                 <div className="flex items-center gap-3">
                   <input 
@@ -394,7 +422,14 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
 
             <div className="flex-1 space-y-5">
               <Input label="Ragione Sociale" value={companyEdit.name} onChange={e => setCompanyEdit({...companyEdit, name: e.target.value})} />
-              <Input label="Sede Legale" value={companyEdit.legalOffice} onChange={e => setCompanyEdit({...companyEdit, legalOffice: e.target.value})} />
+              <Input 
+                label="Partita IVA / P.IVA" 
+                value={companyEdit.vatNumber || ''} 
+                onChange={e => setCompanyEdit({...companyEdit, vatNumber: e.target.value})} 
+                placeholder="01234567890"
+                suffix={<Hash size={16} className="text-slate-400" />}
+              />
+              <Input label="Sede Legale (Indirizzo)" value={companyEdit.legalOffice} onChange={e => setCompanyEdit({...companyEdit, legalOffice: e.target.value})} />
               <Input label="Email Aziendale" type="email" value={companyEdit.email} onChange={e => setCompanyEdit({...companyEdit, email: e.target.value})} />
               <Input label="Telefono / Supporto" value={companyEdit.phone} onChange={e => setCompanyEdit({...companyEdit, phone: e.target.value})} />
             </div>

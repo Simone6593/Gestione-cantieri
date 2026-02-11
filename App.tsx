@@ -45,7 +45,8 @@ const DEFAULT_COMPANY: Company = {
   legalOffice: '',
   phone: '',
   email: '',
-  primaryColor: '#2563eb'
+  primaryColor: '#2563eb',
+  vatNumber: ''
 };
 
 const App: React.FC = () => {
@@ -133,8 +134,9 @@ const App: React.FC = () => {
   const setupFirestoreListeners = (companyId: string) => {
     setLoading(true);
 
-    onSnapshot(doc(db, "companies", companyId), (doc) => {
-      if (doc.exists()) setCompany(doc.data() as Company);
+    // Sincronizzazione con la collezione 'aziende'
+    onSnapshot(doc(db, "aziende", companyId), (doc) => {
+      if (doc.exists()) setCompany({ ...doc.data(), id: doc.id } as Company);
       else {
         // Se l'azienda non esiste ancora in Firestore (nuovo account), impostiamo valori base
         setCompany({ ...DEFAULT_COMPANY, id: companyId, name: 'Nuova Azienda' });
@@ -205,10 +207,10 @@ const App: React.FC = () => {
       const userCred = await createUserWithEmailAndPassword(auth, adminData.email!, adminData.password!);
       const uid = userCred.user.uid;
       
-      // Se l'utente è nuovo tramite registrazione esplicita, usiamo un ID Azienda formale
       const companyId = `azienda_${Date.now()}`;
 
-      await setDoc(doc(db, "companies", companyId), { ...companyData, id: companyId });
+      // Salvataggio nella collezione 'aziende'
+      await setDoc(doc(db, "aziende", companyId), { ...companyData, id: companyId });
 
       const newAdmin: User & { isActive: boolean } = {
         id: uid,
@@ -234,6 +236,12 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => signOut(auth);
+
+  const handleUpdateCompany = async (companyData: Company) => {
+    if (!currentUser) return;
+    // Uso setDoc con merge per aggiornare i dati dell'azienda
+    await setDoc(doc(db, "aziende", currentUser.companyId), companyData, { merge: true });
+  };
 
   const addSite = async (site: Partial<Site>) => {
     if (!currentUser) return;
@@ -457,7 +465,7 @@ const App: React.FC = () => {
           currentUser={currentUser} 
           users={users} 
           company={company}
-          onUpdateCompany={async (c) => await updateDoc(doc(db, "companies", currentUser.companyId), c as any)}
+          onUpdateCompany={handleUpdateCompany}
           onAddUser={addUser} 
           onUpdateUser={handleUpdateUser}
           onRemoveUser={handleRemoveUser}
