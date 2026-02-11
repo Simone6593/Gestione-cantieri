@@ -15,7 +15,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
   const [regStep, setRegStep] = useState(1);
-  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'error' as any });
@@ -35,20 +34,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
   const [companyPhone, setCompanyPhone] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#2563eb');
   
-  useEffect(() => {
-    const saved = localStorage.getItem('remembered_user');
-    if (saved) {
-      try {
-        const { email: savedEmail, pass: savedPass } = JSON.parse(saved);
-        setEmail(savedEmail);
-        setPassword(savedPass);
-        setRememberMe(true);
-      } catch (e) {
-        localStorage.removeItem('remembered_user');
-      }
-    }
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -76,11 +61,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
           }, company);
         }
       } else {
-        if (rememberMe) {
-          localStorage.setItem('remembered_user', JSON.stringify({ email, pass: password }));
-        } else {
-          localStorage.removeItem('remembered_user');
-        }
         await onLogin(email, password);
       }
     } catch (error: any) {
@@ -91,7 +71,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
       if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
         title = "Credenziali Errate";
         message = "La password inserita non è corretta. Riprova o usa il recupero password.";
-      } else if (error.code === 'auth/user-not-found') {
+      } else if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-email') {
         title = "Utente non trovato";
         message = "Non esiste alcun account associato a questa email.";
       } else if (error.code === 'auth/user-disabled') {
@@ -244,10 +224,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
                     } 
                   />
                   {!isRegistering && (
-                    <div className="flex justify-between items-center px-1 py-2">
-                      <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer select-none">
-                        <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" /> Ricordami
-                      </label>
+                    <div className="flex justify-end items-center px-1 py-2">
                       <button type="button" onClick={() => setIsRecovering(true)} className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
                         Password dimenticata?
                       </button>

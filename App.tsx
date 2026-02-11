@@ -10,7 +10,9 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   getAuth,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  setPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
 import { 
   collection, 
@@ -59,6 +61,17 @@ const App: React.FC = () => {
   const [schedules, setSchedules] = useState<Record<string, DailySchedule>>({});
 
   useEffect(() => {
+    // 1. Forza la persistenza di sessione (cancella login alla chiusura scheda)
+    setPersistence(auth, browserSessionPersistence).catch(console.error);
+
+    // 2. Pulizia "Cache" e dati locali all'avvio per garantire il ritorno al login
+    localStorage.clear();
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        for (let name of names) caches.delete(name);
+      });
+    }
+
     requestNotificationPermission();
     
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
@@ -144,6 +157,8 @@ const App: React.FC = () => {
   }, [company]);
 
   const handleLogin = async (email: string, pass: string) => {
+    // Assicuriamoci che la persistenza sia settata prima del login
+    await setPersistence(auth, browserSessionPersistence);
     const userCred = await signInWithEmailAndPassword(auth, email, pass);
     const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
     
@@ -163,6 +178,7 @@ const App: React.FC = () => {
   const handleRegisterNewCompany = async (adminData: Partial<User>, companyData: Company) => {
     try {
       setLoading(true);
+      await setPersistence(auth, browserSessionPersistence);
       const userCred = await createUserWithEmailAndPassword(auth, adminData.email!, adminData.password!);
       const uid = userCred.user.uid;
       const companyId = `comp_${Date.now()}`;
