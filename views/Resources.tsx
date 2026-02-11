@@ -1,8 +1,7 @@
-
 import React, { useState, useRef } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, Company } from '../types';
-import { UserPlus, Trash2, Mail, MessageSquare, Phone, Eye, EyeOff, Edit2, Camera, Building2, Palette, Save } from 'lucide-react';
+import { UserPlus, Trash2, Mail, MessageSquare, Phone, Eye, EyeOff, Edit2, Camera, Building2, Palette, Save, X, Shield } from 'lucide-react';
 
 interface ResourcesProps {
   currentUser: User;
@@ -17,14 +16,18 @@ interface ResourcesProps {
 const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUpdateCompany, onAddUser, onUpdateUser, onRemoveUser }) => {
   const [activeView, setActiveView] = useState<'users' | 'company'>('users');
   const [isAdding, setIsAdding] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   
   const [companyEdit, setCompanyEdit] = useState<Company>({ ...company });
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
-    firstName: '', lastName: '', email: '', phone: '', role: UserRole.WORKER, password: 'password123', avatarUrl: ''
+    firstName: '', 
+    lastName: '', 
+    email: '', 
+    phone: '', 
+    role: UserRole.WORKER, 
+    password: 'password123'
   });
 
   const canEdit = currentUser.role === UserRole.ADMIN;
@@ -38,49 +41,214 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
     }
   };
 
+  const handleAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.firstName || !formData.lastName || !formData.email) {
+      alert("Nome, Cognome ed Email sono obbligatori.");
+      return;
+    }
+    onAddUser(formData);
+    setFormData({
+      firstName: '', 
+      lastName: '', 
+      email: '', 
+      phone: '', 
+      role: UserRole.WORKER, 
+      password: 'password123'
+    });
+    setIsAdding(false);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex gap-4 border-b border-slate-200 pb-2">
-        <button onClick={() => setActiveView('users')} className={`px-4 py-2 font-bold ${activeView === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500'}`}>Team</button>
-        {canEdit && <button onClick={() => setActiveView('company')} className={`px-4 py-2 font-bold ${activeView === 'company' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500'}`}>Profilo Azienda</button>}
+        <button onClick={() => setActiveView('users')} className={`px-4 py-2 font-bold transition-all ${activeView === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Team</button>
+        {canEdit && <button onClick={() => setActiveView('company')} className={`px-4 py-2 font-bold transition-all ${activeView === 'company' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Profilo Azienda</button>}
       </div>
 
       {activeView === 'users' ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {users.map(u => (
-            <Card key={u.id} className="p-4 border-l-4 border-l-blue-600">
-               <h3 className="font-bold">{u.firstName} {u.lastName}</h3>
-               <p className="text-xs text-slate-400 uppercase font-bold mt-1">{u.role}</p>
-               <div className="flex gap-2 mt-4 pt-4 border-t border-slate-50">
-                  <Button variant="secondary" className="flex-1 text-xs"><Mail size={14}/> Email</Button>
-                  <Button variant="secondary" className="flex-1 text-xs"><MessageSquare size={14}/> WA</Button>
-               </div>
+        <div className="space-y-6">
+          {/* Form Aggiunta Utente */}
+          {isAdding && (
+            <Card className="p-6 border-blue-200 bg-blue-50 animate-in fade-in slide-in-from-top-4">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+                  <UserPlus size={20} /> Nuovo Membro del Team
+                </h3>
+                <button onClick={() => setIsAdding(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Input 
+                  label="Nome" 
+                  value={formData.firstName} 
+                  onChange={e => setFormData({...formData, firstName: e.target.value})} 
+                  required 
+                />
+                <Input 
+                  label="Cognome" 
+                  value={formData.lastName} 
+                  onChange={e => setFormData({...formData, lastName: e.target.value})} 
+                  required 
+                />
+                <Input 
+                  label="Email" 
+                  type="email" 
+                  value={formData.email} 
+                  onChange={e => setFormData({...formData, email: e.target.value})} 
+                  required 
+                />
+                <Input 
+                  label="Telefono" 
+                  value={formData.phone} 
+                  onChange={e => setFormData({...formData, phone: e.target.value})} 
+                />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold text-slate-700">Ruolo</label>
+                  <select 
+                    value={formData.role} 
+                    onChange={e => setFormData({...formData, role: e.target.value as UserRole})}
+                    className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  >
+                    <option value={UserRole.WORKER}>{UserRole.WORKER}</option>
+                    <option value={UserRole.SUPERVISOR}>{UserRole.SUPERVISOR}</option>
+                    <option value={UserRole.ADMIN}>{UserRole.ADMIN}</option>
+                  </select>
+                </div>
+                <Input 
+                  label="Password Iniziale" 
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password} 
+                  onChange={e => setFormData({...formData, password: e.target.value})}
+                  suffix={
+                    <button type="button" onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+                <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-2">
+                  <Button variant="ghost" onClick={() => setIsAdding(false)}>Annulla</Button>
+                  <Button type="submit">Crea Utente</Button>
+                </div>
+              </form>
             </Card>
-          ))}
-          {canEdit && <Button onClick={() => setIsAdding(true)} variant="ghost" className="border-2 border-dashed border-slate-200 h-full min-h-[120px]"><UserPlus/> Aggiungi</Button>}
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {users.map(u => (
+              <Card key={u.id} className="p-5 border-l-4 border-l-blue-600 group hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-lg">{u.firstName} {u.lastName}</h3>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <Shield size={12} className="text-blue-500" />
+                      <span className="text-[10px] text-blue-600 uppercase font-bold tracking-wider">{u.role}</span>
+                    </div>
+                  </div>
+                  {canEdit && u.id !== currentUser.id && (
+                    <button 
+                      onClick={() => confirm("Eliminare questo utente?") && onRemoveUser(u.id)}
+                      className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                      title="Rimuovi utente"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+                
+                <div className="space-y-2 mt-4 text-sm text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <Mail size={14} className="text-slate-400" />
+                    <span className="truncate">{u.email}</span>
+                  </div>
+                  {u.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone size={14} className="text-slate-400" />
+                      <span>{u.phone}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-6 pt-4 border-t border-slate-50">
+                  <Button variant="secondary" className="flex-1 text-xs py-2" onClick={() => window.open(`mailto:${u.email}`)}>
+                    <Mail size={14}/> Email
+                  </Button>
+                  {u.phone && (
+                    <Button variant="secondary" className="flex-1 text-xs py-2" onClick={() => window.open(`https://wa.me/${u.phone.replace(/\s+/g, '')}`)}>
+                      <MessageSquare size={14}/> WhatsApp
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ))}
+            
+            {canEdit && !isAdding && (
+              <button 
+                onClick={() => setIsAdding(true)} 
+                className="border-2 border-dashed border-slate-200 rounded-xl h-full min-h-[160px] flex flex-col items-center justify-center gap-3 text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              >
+                <div className="p-3 bg-slate-50 group-hover:bg-blue-100 rounded-full transition-colors">
+                  <UserPlus size={24}/>
+                </div>
+                <span className="font-bold text-sm">Aggiungi Membro</span>
+              </button>
+            )}
+          </div>
         </div>
       ) : (
-        <Card className="p-8 max-w-2xl mx-auto">
+        <Card className="p-8 max-w-2xl mx-auto shadow-lg border-slate-100">
           <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xl font-bold flex items-center gap-2"><Building2 className="text-blue-600" /> Configurazione Branding</h3>
-            <Button onClick={() => { onUpdateCompany(companyEdit); alert("Salvato!"); }}><Save size={18}/> Salva</Button>
+            <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+              <Building2 className="text-blue-600" /> Configurazione Branding
+            </h3>
+            <Button onClick={() => { onUpdateCompany(companyEdit); alert("Impostazioni salvate con successo!"); }}>
+              <Save size={18}/> Salva
+            </Button>
           </div>
+          
           <div className="flex flex-col md:flex-row gap-8">
             <div className="flex flex-col items-center gap-4">
-              <div onClick={() => logoInputRef.current?.click()} className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden cursor-pointer bg-slate-50">
-                {companyEdit.logoUrl ? <img src={companyEdit.logoUrl} className="w-full h-full object-contain" /> : <Camera className="text-slate-300" />}
+              <div 
+                onClick={() => logoInputRef.current?.click()} 
+                className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors group relative"
+              >
+                {companyEdit.logoUrl ? (
+                  <>
+                    <img src={companyEdit.logoUrl} className="w-full h-full object-contain p-2" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Cambia</div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Camera className="text-slate-300" />
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">Logo</span>
+                  </div>
+                )}
               </div>
               <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoChange} />
+              
               <div className="w-full">
-                <label className="text-xs font-bold text-slate-500 uppercase">Colore App</label>
-                <input type="color" value={companyEdit.primaryColor} onChange={e => setCompanyEdit({...companyEdit, primaryColor: e.target.value})} className="w-full h-10 rounded cursor-pointer mt-1" />
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                  <Palette size={12} /> Colore App
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="color" 
+                    value={companyEdit.primaryColor} 
+                    onChange={e => setCompanyEdit({...companyEdit, primaryColor: e.target.value})} 
+                    className="w-full h-10 rounded-lg cursor-pointer border-0 p-0 overflow-hidden" 
+                  />
+                  <span className="text-xs font-mono text-slate-400">{companyEdit.primaryColor.toUpperCase()}</span>
+                </div>
               </div>
             </div>
-            <div className="flex-1 space-y-4">
+
+            <div className="flex-1 space-y-5">
               <Input label="Ragione Sociale" value={companyEdit.name} onChange={e => setCompanyEdit({...companyEdit, name: e.target.value})} />
               <Input label="Sede Legale" value={companyEdit.legalOffice} onChange={e => setCompanyEdit({...companyEdit, legalOffice: e.target.value})} />
-              <Input label="Email Contatto" value={companyEdit.email} onChange={e => setCompanyEdit({...companyEdit, email: e.target.value})} />
-              <Input label="Telefono" value={companyEdit.phone} onChange={e => setCompanyEdit({...companyEdit, phone: e.target.value})} />
+              <Input label="Email Aziendale" type="email" value={companyEdit.email} onChange={e => setCompanyEdit({...companyEdit, email: e.target.value})} />
+              <Input label="Telefono / Supporto" value={companyEdit.phone} onChange={e => setCompanyEdit({...companyEdit, phone: e.target.value})} />
             </div>
           </div>
         </Card>

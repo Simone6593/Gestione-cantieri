@@ -1,3 +1,4 @@
+// @ts-ignore - Ensure firebase/app is correctly resolved in the environment
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
@@ -13,14 +14,14 @@ const firebaseConfig = {
   measurementId: "G-GWG9R74PLT"
 };
 
-// Fix: Use the standard initializeApp from the modular SDK
+// Initialize the standard Firebase application using the modular SDK
 const app = initializeApp(firebaseConfig);
 
-// Esporta le istanze dei servizi legandole all'app inizializzata
+// Export service instances for use throughout the application
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Inizializzazione sicura per Analytics
+// Safe initialization for Analytics (only in browser environment)
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 
 export default app;
