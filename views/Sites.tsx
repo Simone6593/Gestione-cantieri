@@ -2,8 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { Site, User, UserRole } from '../types';
-import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp, Layers } from 'lucide-react';
-import L from 'leaflet';
+import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp, Layers, Navigation } from 'lucide-react';
+import maplibregl from 'maplibre-gl';
 
 interface SitesProps {
   currentUser: User;
@@ -14,6 +14,8 @@ interface SitesProps {
   showActive: boolean;
 }
 
+const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // Stile vettoriale ultra-veloce e gratuito
+
 const MapPickerModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -21,8 +23,8 @@ const MapPickerModal: React.FC<{
   initialCoords?: { latitude: number; longitude: number };
 }> = ({ isOpen, onClose, onConfirm, initialCoords }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markerRef = useRef<maplibregl.Marker | null>(null);
   const [selectedPos, setSelectedPos] = useState<{ lat: number, lng: number } | null>(
     initialCoords ? { lat: initialCoords.latitude, lng: initialCoords.longitude } : null
   );
@@ -32,24 +34,32 @@ const MapPickerModal: React.FC<{
       const initialLat = initialCoords?.latitude || 45.4642; 
       const initialLng = initialCoords?.longitude || 9.1900;
 
-      mapRef.current = L.map(mapContainerRef.current).setView([initialLat, initialLng], 13);
+      mapRef.current = new maplibregl.Map({
+        container: mapContainerRef.current,
+        style: MAP_STYLE,
+        center: [initialLng, initialLat],
+        zoom: 12,
+        antialias: true
+      });
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(mapRef.current);
+      mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
 
       if (initialCoords) {
-        markerRef.current = L.marker([initialLat, initialLng]).addTo(mapRef.current);
+        markerRef.current = new maplibregl.Marker({ color: "#2563eb" })
+          .setLngLat([initialLng, initialLat])
+          .addTo(mapRef.current);
       }
 
-      mapRef.current.on('click', (e: L.LeafletMouseEvent) => {
-        const { lat, lng } = e.latlng;
+      mapRef.current.on('click', (e) => {
+        const { lng, lat } = e.lngLat;
         setSelectedPos({ lat, lng });
 
         if (markerRef.current) {
-          markerRef.current.setLatLng(e.latlng);
+          markerRef.current.setLngLat([lng, lat]);
         } else {
-          markerRef.current = L.marker(e.latlng).addTo(mapRef.current!);
+          markerRef.current = new maplibregl.Marker({ color: "#2563eb" })
+            .setLngLat([lng, lat])
+            .addTo(mapRef.current!);
         }
       });
     }
@@ -69,10 +79,12 @@ const MapPickerModal: React.FC<{
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[80vh]">
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
-          <h3 className="font-bold text-slate-800 flex items-center gap-2">
-            <MapIcon size={20} className="text-blue-600" />
-            Seleziona Posizione Cantiere
-          </h3>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
+              <MapIcon size={18} />
+            </div>
+            <h3 className="font-bold text-slate-800">Seleziona Posizione Cantiere</h3>
+          </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <X size={20} className="text-slate-500" />
           </button>
@@ -80,9 +92,14 @@ const MapPickerModal: React.FC<{
         
         <div className="flex-1 relative">
           <div ref={mapContainerRef} className="absolute inset-0" />
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-xs px-4">
+          <div className="absolute top-4 left-4 z-10">
+            <div className="bg-white/90 backdrop-blur p-2 rounded-lg shadow-sm border border-slate-200 text-[10px] font-bold uppercase">
+              Fai click sulla mappa per posizionare il marker
+            </div>
+          </div>
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-full max-w-xs px-4">
             <Button 
-              className="w-full shadow-2xl h-12 text-lg" 
+              className="w-full shadow-2xl h-12 text-lg font-bold" 
               disabled={!selectedPos}
               onClick={() => {
                 if (selectedPos) onConfirm(selectedPos.lat, selectedPos.lng);
@@ -104,8 +121,8 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
   const [showGlobalMap, setShowGlobalMap] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const globalMapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersGroupRef = useRef<L.LayerGroup | null>(null);
+  const mapInstanceRef = useRef<maplibregl.Map | null>(null);
+  const markersRef = useRef<maplibregl.Marker[]>([]);
 
   const [formData, setFormData] = useState({
     client: '',
@@ -119,38 +136,53 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
   const canEdit = currentUser.role === UserRole.ADMIN;
   const filteredSites = sites.filter(s => s.isActive === showActive);
 
-  // Gestione Mappa Globale
+  // Inizializzazione e Aggiornamento Mappa Globale (GPU Accelerated)
   useEffect(() => {
     if (showGlobalMap && globalMapRef.current && !mapInstanceRef.current) {
-      mapInstanceRef.current = L.map(globalMapRef.current).setView([45.4642, 9.1900], 6);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(mapInstanceRef.current);
-      markersGroupRef.current = L.layerGroup().addTo(mapInstanceRef.current);
+      mapInstanceRef.current = new maplibregl.Map({
+        container: globalMapRef.current,
+        style: MAP_STYLE,
+        center: [12.5674, 41.8719], // Centro Italia
+        zoom: 5,
+        antialias: true
+      });
+      mapInstanceRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
     }
 
-    if (mapInstanceRef.current && markersGroupRef.current) {
-      markersGroupRef.current.clearLayers();
-      const bounds: L.LatLngTuple[] = [];
+    if (mapInstanceRef.current) {
+      // Rimuovi marker esistenti
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+
+      const bounds = new maplibregl.LngLatBounds();
+      let hasCoords = false;
 
       filteredSites.forEach(site => {
         if (site.coords) {
-          const marker = L.marker([site.coords.latitude, site.coords.longitude])
-            .bindPopup(`<b>${site.client}</b><br>${site.address}<br><small>Budget: €${site.budget}</small>`);
-          markersGroupRef.current?.addLayer(marker);
-          bounds.push([site.coords.latitude, site.coords.longitude]);
+          hasCoords = true;
+          const popup = new maplibregl.Popup({ offset: 25 })
+            .setHTML(`
+              <div style="font-family: 'Inter', sans-serif;">
+                <h4 style="font-weight: bold; color: #1e293b; margin-bottom: 4px;">${site.client}</h4>
+                <p style="font-size: 11px; color: #64748b; margin: 0;">${site.address}</p>
+                <div style="margin-top: 8px; font-weight: bold; color: #2563eb; font-size: 12px;">€ ${site.budget.toLocaleString()}</div>
+              </div>
+            `);
+
+          const marker = new maplibregl.Marker({ color: site.isActive ? "#2563eb" : "#94a3b8" })
+            .setLngLat([site.coords.longitude, site.coords.latitude])
+            .setPopup(popup)
+            .addTo(mapInstanceRef.current!);
+          
+          markersRef.current.push(marker);
+          bounds.extend([site.coords.longitude, site.coords.latitude]);
         }
       });
 
-      if (bounds.length > 0) {
-        mapInstanceRef.current.fitBounds(L.latLngBounds(bounds), { padding: [50, 50] });
+      if (hasCoords) {
+        mapInstanceRef.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
       }
     }
-
-    return () => {
-      // Non distruggiamo la mappa per evitare glitch durante i re-render di React, 
-      // a meno che il componente non venga smontato del tutto
-    };
   }, [showGlobalMap, filteredSites]);
 
   const resetForm = () => {
@@ -179,7 +211,6 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
       alert("Cliente, Indirizzo e Posizione sulla mappa sono obbligatori.");
       return;
     }
-
     if (editingSiteId) {
       onUpdateSite(editingSiteId, formData);
     } else {
@@ -207,20 +238,20 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">
-            {showActive ? 'Cantieri Attivi' : 'Cantieri Conclusi'}
+            {showActive ? 'Cantieri Operativi' : 'Cantieri Archiviati'}
           </h2>
-          <p className="text-sm text-slate-500">Gestione operativa e geolocalizzazione dei lavori.</p>
+          <p className="text-sm text-slate-500">Isolamento aziendale e logistica georeferenziata.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setShowGlobalMap(!showGlobalMap)}>
-            <Layers size={18} /> {showGlobalMap ? 'Nascondi Mappa' : 'Mostra Mappa'}
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setShowGlobalMap(!showGlobalMap)}>
+            <Layers size={18} /> {showGlobalMap ? 'Nascondi Mappa' : 'Mappa Globale'}
           </Button>
           {showActive && canEdit && (
-            <Button onClick={() => { resetForm(); setIsAdding(true); }}>
-              <Plus size={18} /> Nuovo Cantiere
+            <Button className="flex-1 sm:flex-none" onClick={() => { resetForm(); setIsAdding(true); }}>
+              <Plus size={18} /> Nuovo
             </Button>
           )}
         </div>
@@ -234,23 +265,24 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
       />
 
       {showGlobalMap && (
-        <Card className="h-80 md:h-[400px] relative overflow-hidden animate-in fade-in duration-500 border-blue-100 shadow-md">
-           <div ref={globalMapRef} className="absolute inset-0 z-10" />
-           <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-              Live Tracker Cantieri
+        <Card className="h-80 md:h-[450px] relative overflow-hidden animate-in fade-in duration-700 shadow-xl border-slate-200">
+           <div ref={globalMapRef} className="absolute inset-0" />
+           <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
+              <Navigation size={12} className="text-blue-600 animate-pulse" />
+              Rendering WebGL Attivo
            </div>
         </Card>
       )}
 
       {isAdding && (
-        <Card className="p-6 border-blue-200 bg-blue-50 shadow-lg animate-in slide-in-from-top-4 duration-300">
+        <Card className="p-6 border-blue-200 bg-blue-50/50 shadow-lg animate-in slide-in-from-top-4 duration-300">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-blue-100">
             <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
               <Construction size={20} />
-              {editingSiteId ? 'Modifica Dati Cantiere' : 'Registrazione Nuovo Cantiere'}
+              {editingSiteId ? 'Modifica Cantiere' : 'Registrazione Cantiere'}
             </h3>
-            <button onClick={resetForm} className="text-blue-400 hover:text-blue-600">
-               <X size={20} />
+            <button onClick={resetForm} className="text-blue-400 hover:text-blue-600 p-1">
+               <X size={24} />
             </button>
           </div>
           
@@ -259,7 +291,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
               <Input label="Cliente / Committente *" value={formData.client} onChange={e => setFormData({...formData, client: e.target.value})} required placeholder="es. Condominio Italia" />
               
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-semibold text-slate-700">Indirizzo e Geolocalizzazione *</label>
+                <label className="text-sm font-semibold text-slate-700">Indirizzo e Posizione *</label>
                 <div className="relative">
                    <input 
                       type="text" 
@@ -267,39 +299,37 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
                       onChange={e => setFormData({...formData, address: e.target.value})} 
                       required 
                       placeholder="Indirizzo completo"
-                      className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg pr-12 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg pr-12 outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
                    />
                    <button 
                       type="button" 
                       onClick={() => setIsMapPickerOpen(true)} 
                       className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all ${formData.coords ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
-                      title="Apri mappa per posizionare"
                    >
                      <MapPin size={20} />
                    </button>
                 </div>
-                {formData.coords && <p className="text-[10px] text-green-600 font-bold uppercase tracking-tight">✓ Posizione impostata correttamente</p>}
+                {formData.coords && <p className="text-[10px] text-green-600 font-bold uppercase tracking-tight flex items-center gap-1"><MapPin size={10}/> Coordinate acquisite</p>}
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-semibold text-slate-700">Documento Preventivo (PDF/IMG)</label>
+                <label className="text-sm font-semibold text-slate-700">Preventivo / Documentazione</label>
                 <div className="flex gap-2">
-                  <Button variant="secondary" type="button" className="bg-white flex-1" onClick={() => fileInputRef.current?.click()}>
-                    <FileUp size={16} /> {formData.quoteUrl ? 'Cambia File' : 'Seleziona File'}
+                  <Button variant="secondary" type="button" className="bg-white flex-1 border border-slate-200" onClick={() => fileInputRef.current?.click()}>
+                    <FileUp size={16} /> {formData.quoteUrl ? 'File Caricato' : 'Allega File'}
                   </Button>
-                  {formData.quoteUrl && <div className="p-2 bg-green-100 text-green-600 rounded-lg flex items-center justify-center"><Layers size={16}/></div>}
                 </div>
                 <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept=".pdf,image/*" />
               </div>
 
-              <Input label="Importo Complessivo (€)" type="number" value={formData.budget.toString()} onChange={e => setFormData({...formData, budget: Number(e.target.value)})} placeholder="0.00" />
-              <Input label="Giornate Uomo Previste" type="number" value={formData.estimatedDays.toString()} onChange={e => setFormData({...formData, estimatedDays: Number(e.target.value)})} placeholder="es. 10" />
+              <Input label="Budget Lavori (€)" type="number" value={formData.budget.toString()} onChange={e => setFormData({...formData, budget: Number(e.target.value)})} placeholder="0.00" />
+              <Input label="Giornate Previste" type="number" value={formData.estimatedDays.toString()} onChange={e => setFormData({...formData, estimatedDays: Number(e.target.value)})} placeholder="es. 10" />
             </div>
             
             <div className="flex gap-3 justify-end pt-4 border-t border-blue-100">
               <Button variant="ghost" onClick={resetForm}>Annulla</Button>
               <Button type="submit" className="px-8 shadow-md">
-                {editingSiteId ? 'Aggiorna Cantiere' : 'Crea Cantiere'}
+                {editingSiteId ? 'Salva Modifiche' : 'Conferma Creazione'}
               </Button>
             </div>
           </form>
@@ -308,26 +338,28 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {filteredSites.map(site => (
-          <Card key={site.id} className="p-6 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all group overflow-visible">
+          <Card key={site.id} className="p-6 border-slate-200 hover:border-blue-400 hover:shadow-lg transition-all group">
             <div className="flex justify-between items-start">
               <div className="flex gap-4 min-w-0">
-                <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100 transition-all">
                   <Construction size={28} />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-xl font-bold text-slate-800 truncate">{site.client}</h3>
-                  <div className="flex items-center gap-1.5 text-slate-500 text-sm mt-0.5">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-sm mt-1">
                     <MapPin size={14} className="text-blue-400" /> 
                     <span className="truncate">{site.address}</span>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-50">
-                    <div>
+                  <div className="grid grid-cols-2 gap-6 mt-5 pt-5 border-t border-slate-50">
+                    <div className="space-y-1">
                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Avanzamento</p>
-                       <p className="text-sm font-bold text-slate-700">{site.actualDays} / {site.estimatedDays} <span className="text-xs text-slate-400 font-normal">Giorni</span></p>
+                       <p className="text-sm font-bold text-slate-700 flex items-baseline gap-1">
+                         {site.actualDays} <span className="text-xs text-slate-400 font-normal">/ {site.estimatedDays}gg</span>
+                       </p>
                     </div>
-                    <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Budget</p>
+                    <div className="space-y-1">
+                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Economia</p>
                        <p className="text-sm font-bold text-slate-700">€ {site.budget.toLocaleString()}</p>
                     </div>
                   </div>
@@ -335,19 +367,11 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
               </div>
 
               {canEdit && (
-                <div className="flex gap-1 ml-2">
-                  <button 
-                    onClick={() => handleEdit(site)} 
-                    className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                    title="Modifica"
-                  >
+                <div className="flex gap-1">
+                  <button onClick={() => handleEdit(site)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all">
                     <Edit2 size={18} />
                   </button>
-                  <button 
-                    onClick={() => onRemoveSite(site.id)} 
-                    className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                    title="Elimina"
-                  >
+                  <button onClick={() => onRemoveSite(site.id)} className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
                     <Trash2 size={18} />
                   </button>
                 </div>
@@ -358,9 +382,13 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
               <div className="mt-6">
                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                     <div 
-                      className="bg-blue-600 h-full rounded-full transition-all duration-1000" 
+                      className="bg-blue-600 h-full rounded-full transition-all duration-1000 ease-out" 
                       style={{ width: `${Math.min(100, (site.actualDays / (site.estimatedDays || 1)) * 100)}%` }}
                     />
+                 </div>
+                 <div className="flex justify-between mt-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Progresso Stimato</span>
+                    <span className="text-[10px] font-bold text-blue-600">{Math.round((site.actualDays / (site.estimatedDays || 1)) * 100)}%</span>
                  </div>
               </div>
             )}
@@ -368,12 +396,12 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
         ))}
 
         {filteredSites.length === 0 && (
-          <div className="col-span-full py-20 text-center bg-white border-2 border-dashed border-slate-200 rounded-2xl">
-            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
+          <div className="col-span-full py-24 text-center bg-white border-2 border-dashed border-slate-200 rounded-3xl">
+            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-200">
               <Construction size={40} />
             </div>
-            <h3 className="text-lg font-bold text-slate-400">Nessun cantiere trovato</h3>
-            <p className="text-sm text-slate-400">Usa il tasto in alto per registrare il tuo primo cantiere.</p>
+            <h3 className="text-xl font-bold text-slate-400">Nessun cantiere archiviato</h3>
+            <p className="text-sm text-slate-400 max-w-xs mx-auto mt-2">I cantieri appariranno qui una volta conclusi o registrati a sistema.</p>
           </div>
         )}
       </div>
