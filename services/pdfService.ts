@@ -35,25 +35,19 @@ export const generateReportPDF = async (report: DailyReport, company: Company) =
   const primaryColor = company.primaryColor || '#2563eb';
   const secondaryColor = '#475569'; 
 
-  // Header Background
-  doc.setFillColor(primaryColor);
-  doc.rect(0, 0, 210, 50, 'F');
-  
   let logoWidth = 0;
   let logoHeight = 0;
   let headerX = 20;
 
-  // Company Logo con proporzioni mantenute
+  // 1. Logo Aziendale (se presente)
   if (company.logoUrl) {
     try {
       const dims = await getImageDimensions(company.logoUrl);
-      const scaled = getScaledDimensions(dims.width, dims.height, 40, 30);
+      const scaled = getScaledDimensions(dims.width, dims.height, 45, 30);
       logoWidth = scaled.width;
       logoHeight = scaled.height;
       
-      // Centratura verticale nel box dell'header (50mm altezza)
-      const logoY = (50 - logoHeight) / 2;
-      doc.addImage(company.logoUrl, 'PNG', 10, logoY, logoWidth, logoHeight, undefined, 'FAST');
+      doc.addImage(company.logoUrl, 'PNG', 15, 15, logoWidth, logoHeight, undefined, 'FAST');
       headerX = 20 + logoWidth;
     } catch (e) {
       console.error("PDF Logo error", e);
@@ -61,107 +55,121 @@ export const generateReportPDF = async (report: DailyReport, company: Company) =
     }
   }
 
-  // Company Details (Header Text)
-  doc.setTextColor(255, 255, 255);
+  // 2. Intestazione Aziendale (Testo)
+  doc.setTextColor(40, 40, 40);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.text(company.name.toUpperCase(), headerX, 22);
+  doc.setFontSize(20);
+  doc.text(company.name.toUpperCase(), headerX + 5, 25);
   
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(company.legalOffice || 'Indirizzo non disponibile', headerX, 30);
-  doc.text(`Email: ${company.email} | Tel: ${company.phone}`, headerX, 36);
-  
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text('RAPPORTO GIORNALIERO DI CANTIERE', headerX, 45);
+  doc.setTextColor(secondaryColor);
+  doc.text(company.legalOffice || 'Indirizzo non specificato', headerX + 5, 32);
+  doc.text(`Email: ${company.email} | Tel: ${company.phone}`, headerX + 5, 37);
+  if (company.vatNumber) {
+    doc.text(`P.IVA: ${company.vatNumber}`, headerX + 5, 42);
+  }
 
-  // Content Start
+  // 3. RIGA SPESSA DEL COLORE AZIENDALE (Separatore)
+  doc.setDrawColor(primaryColor);
+  doc.setLineWidth(1.5);
+  doc.line(15, 50, 195, 50);
+
+  // 4. Titolo Rapporto
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(14);
-  doc.text(`ID Rapporto: ${report.id}`, 20, 65);
-  
-  doc.setDrawColor(226, 232, 240);
-  doc.line(20, 70, 190, 70);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RAPPORTO GIORNALIERO DI CANTIERE', 105, 62, { align: 'center' });
 
-  // Details Grid
+  // 5. Dettagli Generali
   doc.setFontSize(10);
   doc.setTextColor(secondaryColor);
   doc.setFont('helvetica', 'normal');
-  doc.text('CANTIERE:', 20, 80);
-  doc.text('DATA:', 110, 80);
+  doc.text(`ID: ${report.id}`, 15, 75);
+  
+  doc.setDrawColor(230, 230, 230);
+  doc.setLineWidth(0.2);
+  doc.line(15, 78, 195, 78);
+
+  // Grid Informazioni
+  doc.text('CANTIERE / CLIENTE:', 15, 88);
+  doc.text('DATA LAVORO:', 130, 88);
   
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
-  doc.text(report.siteName, 20, 85);
-  doc.text(new Date(report.date).toLocaleDateString('it-IT'), 110, 85);
+  doc.text(report.siteName, 15, 93);
+  doc.text(new Date(report.date).toLocaleDateString('it-IT'), 130, 93);
 
   doc.setTextColor(secondaryColor);
   doc.setFont('helvetica', 'normal');
-  doc.text('COMPILATORE:', 20, 95);
-  doc.text('TIMESTAMP INVIO:', 110, 95);
+  doc.text('RESPONSABILE COMPILAZIONE:', 15, 103);
+  doc.text('DATA E ORA INVIO:', 130, 103);
 
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'bold');
-  doc.text(report.compilerName, 20, 100);
-  doc.text(new Date(report.timestamp).toLocaleString('it-IT'), 110, 100);
+  doc.text(report.compilerName, 15, 108);
+  doc.text(new Date(report.timestamp).toLocaleString('it-IT'), 130, 108);
 
-  // Workers List
+  // Operatori
   doc.setTextColor(secondaryColor);
   doc.setFont('helvetica', 'normal');
-  doc.text('OPERATORI PRESENTI:', 20, 115);
+  doc.text('PERSONALE PRESENTE:', 15, 120);
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'italic');
-  doc.text(report.workerNames.join(', '), 20, 120);
+  doc.text(report.workerNames.join(', '), 15, 125);
 
-  // Description
+  // 6. Descrizione Lavorazioni
   doc.setDrawColor(primaryColor);
-  doc.setLineWidth(0.5);
-  doc.line(20, 130, 40, 130);
+  doc.setLineWidth(0.8);
+  doc.line(15, 135, 35, 135);
   
   doc.setFont('helvetica', 'bold');
-  doc.text('DESCRIZIONE LAVORAZIONI:', 20, 138);
+  doc.setFontSize(11);
+  doc.text('DESCRIZIONE DELLE ATTIVITÀ:', 15, 142);
+  
   doc.setFont('helvetica', 'normal');
-  const splitDesc = doc.splitTextToSize(report.description, 170);
-  doc.text(splitDesc, 20, 145);
+  doc.setFontSize(10);
+  const splitDesc = doc.splitTextToSize(report.description, 180);
+  doc.text(splitDesc, 15, 148);
 
   let currentY = 155 + (splitDesc.length * 5);
 
-  // Notes
+  // Note (opzionali)
   if (report.notes) {
+    if (currentY > 260) { doc.addPage(); currentY = 20; }
     doc.setFont('helvetica', 'bold');
-    doc.text('NOTE AGGIUNTIVE:', 20, currentY);
+    doc.text('NOTE E OSSERVAZIONI:', 15, currentY);
     doc.setFont('helvetica', 'normal');
-    const splitNotes = doc.splitTextToSize(report.notes, 170);
-    doc.text(splitNotes, 20, currentY + 7);
+    const splitNotes = doc.splitTextToSize(report.notes, 180);
+    doc.text(splitNotes, 15, currentY + 7);
     currentY += 15 + (splitNotes.length * 5);
   }
 
-  // Report Photo con proporzioni mantenute
+  // 7. Foto Cantiere
   if (report.photoUrl) {
     try {
       const photoDims = await getImageDimensions(report.photoUrl);
-      const photoScaled = getScaledDimensions(photoDims.width, photoDims.height, 170, 110);
+      const photoScaled = getScaledDimensions(photoDims.width, photoDims.height, 180, 100);
       
-      // Controllo se serve nuova pagina
-      if (currentY + photoScaled.height + 10 > 280) {
+      if (currentY + photoScaled.height + 15 > 280) {
         doc.addPage();
         currentY = 20;
       }
 
       doc.setFont('helvetica', 'bold');
-      doc.text('DOCUMENTAZIONE FOTOGRAFICA:', 20, currentY);
-      doc.addImage(report.photoUrl, 'JPEG', 20, currentY + 5, photoScaled.width, photoScaled.height, undefined, 'FAST');
+      doc.text('DOCUMENTAZIONE FOTOGRAFICA:', 15, currentY);
+      doc.addImage(report.photoUrl, 'JPEG', 15, currentY + 5, photoScaled.width, photoScaled.height, undefined, 'FAST');
     } catch (e) {
       console.error("PDF Image error", e);
     }
   }
 
-  // Footer
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
-  doc.text('Generato automaticamente da CostruGest by Simone Barni', 105, 285, { align: 'center' });
+  // 8. Footer
+  doc.setFontSize(7);
+  doc.setTextColor(180, 180, 180);
+  doc.text(`Documento generato digitalmente tramite CostruGest | Azienda: ${company.name}`, 105, 288, { align: 'center' });
 
-  // Save the PDF
-  doc.save(`Rapporto_${report.siteName.replace(/\s+/g, '_')}_${report.date}.pdf`);
+  // Salvataggio
+  const fileName = `Rapporto_${report.siteName.replace(/\s+/g, '_')}_${report.date}.pdf`;
+  doc.save(fileName);
 };
