@@ -1,18 +1,21 @@
 
 import React from 'react';
 import { Card, Button } from '../components/Shared';
-import { DailyReport, Company } from '../types';
-import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Sparkles, Download } from 'lucide-react';
+import { DailyReport, Company, User, UserRole } from '../types';
+import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Sparkles, Download, Trash2 } from 'lucide-react';
 import { generateReportPDF } from '../services/pdfService';
 
 interface ArchivedReportsProps {
+  currentUser: User;
   reports: DailyReport[];
   company: Company;
+  onRemoveReport: (id: string) => void;
 }
 
-const ArchivedReports: React.FC<ArchivedReportsProps> = ({ reports, company }) => {
+const ArchivedReports: React.FC<ArchivedReportsProps> = ({ currentUser, reports, company, onRemoveReport }) => {
+  const isAdmin = currentUser.role === UserRole.ADMIN;
+
   const handleDownloadPDF = async (report: DailyReport) => {
-    // Passing company data to the PDF service for personalized branding
     await generateReportPDF(report, company);
   };
 
@@ -27,10 +30,19 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ reports, company }) =
 
       <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-6">
         {reports.map((report) => (
-          <Card key={report.id} className="flex flex-col h-full border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group">
-            {/* Header section */}
+          <Card key={report.id} className="flex flex-col h-full border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group relative">
+            {isAdmin && (
+              <button 
+                onClick={() => onRemoveReport(report.id)}
+                className="absolute top-4 right-4 z-20 p-2 text-slate-300 hover:text-red-500 transition-colors bg-white/80 backdrop-blur rounded-full shadow-sm"
+                title="Elimina rapportino"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+
             <div className="p-5 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex justify-between items-start mb-2">
+              <div className="flex justify-between items-start mb-2 pr-8">
                 <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider">
                   {report.id}
                 </span>
@@ -48,9 +60,7 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ reports, company }) =
               </div>
             </div>
 
-            {/* Body section */}
             <div className="p-5 space-y-4 flex-1">
-              {/* Personnel */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
                   <UserIcon size={14} />
@@ -68,11 +78,8 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ reports, company }) =
                 </p>
               </div>
 
-              {/* Full description */}
               <div className="space-y-1">
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lavorazioni eseguite</div>
-                
-                {/* AI Summary display if available */}
                 {report.summary && (
                   <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 mb-3 animate-in fade-in slide-in-from-left-2">
                     <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase mb-1">
@@ -81,23 +88,18 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ reports, company }) =
                     <p className="text-sm text-blue-800 font-medium italic">"{report.summary}"</p>
                   </div>
                 )}
-
                 <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                   {report.description}
                 </p>
               </div>
 
-              {report.notes && (
-                <div className="space-y-1 pt-2 border-t border-slate-50">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Note</div>
-                  <p className="text-xs text-slate-500 italic">
-                    {report.notes}
-                  </p>
+              {report.photoUrl && (
+                <div className="mt-2 rounded-lg overflow-hidden border border-slate-200">
+                  <img src={report.photoUrl} className="w-full h-32 object-cover" alt="Foto cantiere" />
                 </div>
               )}
             </div>
 
-            {/* Actions section */}
             <div className="p-5 pt-0 mt-auto">
               <Button 
                 onClick={() => handleDownloadPDF(report)}

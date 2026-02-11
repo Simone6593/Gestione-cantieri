@@ -68,7 +68,6 @@ const App: React.FC = () => {
           if (userDoc.exists()) {
             const userData = userDoc.data() as User & { isActive?: boolean };
             
-            // BLOCCO ACCESSO SE DISATTIVATO
             if (userData.isActive === false) {
               await signOut(auth);
               setCurrentUser(null);
@@ -106,7 +105,6 @@ const App: React.FC = () => {
       if (doc.exists()) setCompany(doc.data() as Company);
     });
 
-    // Filtriamo per mostrare solo utenti attivi nel team
     const qUsers = query(collection(db, "users"), where("companyId", "==", companyId), where("isActive", "==", true));
     onSnapshot(qUsers, (snapshot) => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
@@ -215,23 +213,18 @@ const App: React.FC = () => {
 
   const addUser = async (userData: Partial<User> & { password?: string }) => {
     if (!currentUser) return;
-
-    // CONTROLLO SE ESISTE GIÀ UN ACCOUNT (ATTIVO O DISATTIVATO)
     const q = query(collection(db, "users"), where("email", "==", userData.email));
     const existingDocs = await getDocs(q);
     
     if (!existingDocs.empty) {
       const docData = existingDocs.docs[0].data() as any;
       if (docData.isActive === false) {
-        // RIATTIVAZIONE
-        if (!confirm(`L'email ${userData.email} era precedentemente bloccata. Vuoi riattivarla con i nuovi dati? (Nota: la password rimarrà quella vecchia, l'utente potrà resettarla se dimenticata).`)) {
-          return;
-        }
+        if (!confirm(`L'email ${userData.email} era precedentemente bloccata. Riattivare?`)) return;
         const uid = existingDocs.docs[0].id;
         await updateDoc(doc(db, "users", uid), {
           ...userData,
           isActive: true,
-          companyId: currentUser.companyId, // Assicuriamoci che sia nella stessa azienda
+          companyId: currentUser.companyId,
         });
         return uid;
       } else {
@@ -280,13 +273,8 @@ const App: React.FC = () => {
   };
 
   const handleRemoveUser = async (id: string) => {
-    if (!confirm("Sei sicuro di voler bloccare questo utente? L'accesso verrà revocato immediatamente.")) return;
-    try {
-      // SOFT DELETE: Disattiviamo invece di eliminare
-      await updateDoc(doc(db, "users", id), { isActive: false });
-    } catch (error: any) {
-      alert("Errore durante il blocco: " + error.message);
-    }
+    if (!confirm("Sei sicuro di voler bloccare questo utente?")) return;
+    await updateDoc(doc(db, "users", id), { isActive: false });
   };
 
   const handleClockIn = async (siteId: string, coords: { lat: number, lng: number }) => {
@@ -313,9 +301,13 @@ const App: React.FC = () => {
     });
   };
 
+  const handleRemoveReport = async (id: string) => {
+    if (!confirm("Sei sicuro di voler eliminare questo rapportino? L'operazione è irreversibile.")) return;
+    await deleteDoc(doc(db, "reports", id));
+  };
+
   const submitReport = async (reportData: Partial<DailyReport>) => {
     if (!currentUser) return;
-
     let summary = "";
     if (reportData.description) {
       try {
@@ -449,7 +441,12 @@ const App: React.FC = () => {
         />
       )}
       {activeTab === 'archived-reports' && (
-        <ArchivedReports reports={reports} company={company} />
+        <ArchivedReports 
+          currentUser={currentUser}
+          reports={reports} 
+          company={company} 
+          onRemoveReport={handleRemoveReport}
+        />
       )}
       {activeTab === 'schedule' && (
         <Schedule 

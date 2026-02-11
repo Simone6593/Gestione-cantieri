@@ -18,7 +18,6 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // STATO MODAL POP-UP
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'error' as any });
 
   const [email, setEmail] = useState('');
@@ -128,7 +127,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
 
   if (isRecovering) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
         <Modal {...modal} onClose={() => setModal({ ...modal, isOpen: false })} />
         <Card className="p-8 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-300">
           <button type="button" onClick={() => setIsRecovering(false)} className="text-slate-500 flex items-center gap-1 text-sm mb-6 hover:text-blue-600 transition-colors">
@@ -153,12 +152,15 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
             <Button type="submit" className="w-full h-12">Invia Email di Recupero</Button>
           </form>
         </Card>
+        <div className="mt-8">
+           <p className="text-[10px] font-bold text-slate-600 tracking-widest uppercase">powered by Simone Barni</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
       <Modal {...modal} onClose={() => setModal({ ...modal, isOpen: false })} />
       <div className="w-full max-w-lg">
         <div className="flex flex-col items-center mb-8 text-white">
@@ -272,6 +274,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
             </div>
           )}
         </Card>
+      </div>
+      <div className="mt-8">
+         <p className="text-[10px] font-bold text-slate-600 tracking-widest uppercase">powered by Simone Barni</p>
       </div>
     </div>
   );

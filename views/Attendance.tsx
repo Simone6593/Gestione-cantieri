@@ -31,20 +31,15 @@ const Attendance: React.FC<AttendanceProps> = ({
 
   const todayStr = new Date().toISOString().split('T')[0];
   
-  // 1. Automatic site selection from schedule
   const assignedSiteId = useMemo(() => {
     const todaySchedule = schedules[todayStr];
     if (!todaySchedule) return '';
-    
-    // Find if user is assigned to any site today
-    // Fix: explicitly cast workerIds as string[] to resolve 'unknown' type error in Object.entries
     for (const [siteId, workerIds] of Object.entries(todaySchedule.siteAssignments)) {
       if ((workerIds as string[]).includes(user.id)) return siteId;
     }
     return '';
   }, [schedules, todayStr, user.id]);
 
-  // Active attendance for this user
   const activeRecord = attendance.find(a => a.userId === user.id && !a.endTime);
 
   useEffect(() => {
@@ -63,22 +58,21 @@ const Attendance: React.FC<AttendanceProps> = ({
     }
 
     if (activeRecord) {
-      // CLOCK OUT LOGIC
-      
-      // Check if report already exists for this site today
+      // CLOCK OUT WITH CONFIRMATION
+      if (!confirm("Sei sicuro di voler terminare il turno di lavoro ora?")) {
+        return;
+      }
+
       const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === todayStr);
       
       if (reportExists) {
-        // Report already done by someone, just clock out
         onClockOut(activeRecord.id, currentCoords);
         return;
       }
 
-      // Check if user is the last one to clock out
       const todaySchedule = schedules[todayStr];
       const assignedWorkerIds = (todaySchedule?.siteAssignments[activeRecord.siteId] || []) as string[];
       
-      // Workers from the schedule currently clocked in at this site
       const workersStillClockedIn = attendance.filter(a => 
         !a.endTime && 
         a.siteId === activeRecord.siteId && 
@@ -88,17 +82,15 @@ const Attendance: React.FC<AttendanceProps> = ({
       const isLastWorker = workersStillClockedIn.length <= 1;
 
       if (isLastWorker) {
-        // BLOCK: Last worker must do the report
         setBlockingMessage("Sei l'ultimo operaio presente. È obbligatorio compilare il rapportino giornaliero prima di timbrare la fine.");
       } else {
-        // OPTIONAL: Ask but don't block
         onClockOut(activeRecord.id, currentCoords);
         if (user.role === UserRole.WORKER) {
           setShowReportPrompt(true);
         }
       }
     } else {
-      // CLOCK IN LOGIC
+      // CLOCK IN
       if (!assignedSiteId) {
         alert("Non risulti assegnato ad alcun cantiere per oggi nel programma giornaliero. Contatta il supervisore.");
         return;
@@ -112,7 +104,6 @@ const Attendance: React.FC<AttendanceProps> = ({
   return (
     <div className="space-y-6">
       <Card className="p-8 text-center bg-gradient-to-br from-white to-slate-50 relative overflow-hidden">
-        {/* Visual background element */}
         <div className="absolute top-0 right-0 p-4 opacity-10">
           <Clock size={120} />
         </div>
@@ -196,7 +187,7 @@ const Attendance: React.FC<AttendanceProps> = ({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
         <Card className="p-6">
           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
             <CheckCircle2 size={18} className="text-green-500" />
@@ -226,6 +217,10 @@ const Attendance: React.FC<AttendanceProps> = ({
             )}
           </div>
         </Card>
+      </div>
+
+      <div className="text-center pb-8 opacity-40">
+        <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">powered by Simone Barni</p>
       </div>
     </div>
   );

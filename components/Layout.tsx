@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { UserRole, Company } from '../types';
 import { 
@@ -44,7 +45,7 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <aside className={`fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 text-white transform transition-transform z-50 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+      <aside className={`fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 text-white transform transition-transform z-50 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 flex items-center gap-3 border-b border-slate-800">
           {company.logoUrl ? <img src={company.logoUrl} className="w-10 h-10 object-contain bg-white rounded p-1" /> : <div className="w-10 h-10 bg-[var(--primary-color)] rounded-lg flex items-center justify-center font-bold uppercase">{company.name[0]}</div>}
           <span className="font-bold truncate">{company.name}</span>
@@ -56,8 +57,11 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-4">
            <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-lg transition-all active:scale-95"><LogOut size={20} /> Logout</button>
+           <div className="text-center">
+              <p className="text-[10px] font-bold text-slate-600 tracking-widest uppercase">powered by Simone Barni</p>
+           </div>
         </div>
       </aside>
 
@@ -69,7 +73,12 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-7xl mx-auto">{children}</div>
+          <div className="max-w-7xl mx-auto min-h-full flex flex-col">
+            <div className="flex-1">{children}</div>
+            <div className="mt-12 mb-4 text-center">
+               <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">powered by Simone Barni</p>
+            </div>
+          </div>
         </div>
 
         {isGuideOpen && (
