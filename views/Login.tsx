@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { Construction, Eye, EyeOff, ArrowLeft, KeyRound } from 'lucide-react';
@@ -34,10 +33,14 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, users }) => {
   useEffect(() => {
     const saved = localStorage.getItem('remembered_user');
     if (saved) {
-      const { email: savedEmail, pass: savedPass } = JSON.parse(saved);
-      setEmail(savedEmail);
-      setPassword(savedPass);
-      setRememberMe(true);
+      try {
+        const { email: savedEmail, pass: savedPass } = JSON.parse(saved);
+        setEmail(savedEmail);
+        setPassword(savedPass);
+        setRememberMe(true);
+      } catch (e) {
+        localStorage.removeItem('remembered_user');
+      }
     }
   }, []);
 
