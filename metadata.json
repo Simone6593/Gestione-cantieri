@@ -1,6 +1,6 @@
 {
   "name": "CostruGest - Gestione Cantieri",
-  "description": "Sistema integrato per la gestione di risorse umane, cantieri, rapportini e timbrature con diversi livelli di accesso (Amministratore, Supervisore, Operaio). Include integrazione Gemini per la sintesi delle lavorazioni.",
+  "description": "Sistema integrato per la gestione di risorse umane, cantieri, rapportini e timbrature con diversi livelli di accesso (Amministratore, Supervisore, Operaio).",
   "requestFramePermissions": [
     "camera",
     "geolocation"

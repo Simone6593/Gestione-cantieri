@@ -78,7 +78,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, users }) => {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
         <Card className="p-8 w-full max-w-md">
-          <button onClick={() => setIsRecovering(false)} className="text-slate-500 flex items-center gap-1 text-sm mb-6">
+          <button type="button" onClick={() => setIsRecovering(false)} className="text-slate-500 flex items-center gap-1 text-sm mb-6">
             <ArrowLeft size={16} /> Torna al Login
           </button>
           <div className="text-center mb-6">
