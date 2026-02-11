@@ -1,7 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company } from './types';
 import { auth, db } from './firebase';
-// Fix: Added @ts-ignore to suppress false positive error for initializeApp export in the current environment
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
 import { 
@@ -64,7 +64,16 @@ const App: React.FC = () => {
           const userDoc = await getDoc(doc(db, "users", fbUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data() as User;
-            setCurrentUser({ ...userData, id: fbUser.uid });
+            const fullUser = { ...userData, id: fbUser.uid };
+            setCurrentUser(fullUser);
+            
+            // Reindirizzamento basato sul ruolo al caricamento iniziale
+            if (userData.role === UserRole.WORKER) {
+              setActiveTab('attendance');
+            } else {
+              setActiveTab('attendance-log');
+            }
+            
             setupFirestoreListeners(userData.companyId);
           } else {
             setLoading(false);
@@ -89,7 +98,6 @@ const App: React.FC = () => {
       if (doc.exists()) setCompany(doc.data() as Company);
     });
 
-    // Real-time Users
     const qUsers = query(collection(db, "users"), where("companyId", "==", companyId));
     onSnapshot(qUsers, (snapshot) => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
@@ -130,7 +138,17 @@ const App: React.FC = () => {
 
   const handleLogin = async (email: string, pass: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
+      const userCred = await signInWithEmailAndPassword(auth, email, pass);
+      const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as User;
+        // Reindirizzamento immediato dopo il login
+        if (userData.role === UserRole.WORKER) {
+          setActiveTab('attendance');
+        } else {
+          setActiveTab('attendance-log');
+        }
+      }
     } catch (error: any) {
       alert("Errore accesso: " + error.message);
     }
@@ -157,8 +175,8 @@ const App: React.FC = () => {
       await setDoc(doc(db, "users", uid), newAdmin);
       
       setCurrentUser(newAdmin);
+      setActiveTab('attendance-log'); // Admin atterra su Registro
       setupFirestoreListeners(companyId);
-      setActiveTab('active-sites');
     } catch (error: any) {
       alert("Errore registrazione: " + error.message);
       setLoading(false);
@@ -186,14 +204,9 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "sites", id));
   };
 
-  /**
-   * ADDS A NEW USER TO AUTH AND FIRESTORE
-   * To prevent the admin from being logged out, we initialize a secondary firebase app instance.
-   */
   const addUser = async (userData: Partial<User> & { password?: string }) => {
     if (!currentUser) return;
     
-    // 1. Setup secondary app to create user in Auth without losing admin session
     const secondaryConfig = {
       apiKey: "AIzaSyDTn3FOP59TOUl0Vj0LA8NzIXPAJoX5HFg",
       authDomain: "costrugest.firebaseapp.com",
@@ -207,7 +220,6 @@ const App: React.FC = () => {
     const secondaryAuth = getAuth(secondaryApp);
 
     try {
-      // 2. Create the user in Firebase Authentication
       const userCred = await createUserWithEmailAndPassword(
         secondaryAuth, 
         userData.email!, 
@@ -215,8 +227,6 @@ const App: React.FC = () => {
       );
       
       const newUid = userCred.user.uid;
-
-      // 3. Save the profile data in Firestore using the Auth UID as the document ID
       const { password, ...profileData } = userData;
       await setDoc(doc(db, "users", newUid), {
         ...profileData,
@@ -224,9 +234,7 @@ const App: React.FC = () => {
         companyId: currentUser.companyId,
       });
 
-      // 4. Cleanup the secondary app
       await signOut(secondaryAuth);
-      
       return newUid;
     } catch (error: any) {
       console.error("Error adding user to Auth:", error);
@@ -236,6 +244,21 @@ const App: React.FC = () => {
 
   const handleUpdateUser = async (id: string, updates: Partial<User>) => {
     await updateDoc(doc(db, "users", id), updates);
+  };
+
+  const handleRemoveUser = async (id: string) => {
+    if (!confirm("Sei sicuro di voler rimuovere questo utente? L'accesso verrà disabilitato rimuovendo il suo profilo da Firestore.")) return;
+    
+    try {
+      // Rimuoviamo il profilo da Firestore
+      // Nota: Per eliminare l'utente anche da Firebase Auth via client-side, 
+      // servirebbe che l'utente fosse loggato o usare Firebase Admin SDK (Cloud Functions).
+      // Eliminando il documento in 'users', l'utente non potrà più caricare i dati dell'app
+      // poiché il sistema di routing e permessi si basa su questo documento.
+      await deleteDoc(doc(db, "users", id));
+    } catch (error: any) {
+      alert("Errore durante la rimozione: " + error.message);
+    }
   };
 
   const handleClockIn = async (siteId: string, coords: { lat: number, lng: number }) => {
@@ -367,7 +390,7 @@ const App: React.FC = () => {
           onUpdateCompany={async (c) => await updateDoc(doc(db, "companies", currentUser.companyId), c as any)}
           onAddUser={addUser} 
           onUpdateUser={handleUpdateUser}
-          onRemoveUser={async (id) => await deleteDoc(doc(db, "users", id))}
+          onRemoveUser={handleRemoveUser}
         />
       )}
       {activeTab === 'active-sites' && (
