@@ -13,7 +13,7 @@ interface ResourcesProps {
   users: User[];
   company: Company;
   onUpdateCompany: (c: Company) => void;
-  onAddUser: (user: Partial<User>) => void;
+  onAddUser: (user: Partial<User> & { password?: string }) => void;
   onUpdateUser: (id: string, updates: Partial<User>) => void;
   onRemoveUser: (id: string) => void;
 }
@@ -61,7 +61,9 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
     
     setIsSaving(true);
     try {
+      // Pass the entire formData including password to onAddUser
       await onAddUser(formData);
+      alert(`Utente ${formData.firstName} creato correttamente. Ora può accedere con la sua email.`);
       setFormData({
         firstName: '', 
         lastName: '', 
@@ -72,7 +74,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
       });
       setIsAdding(false);
     } catch (err: any) {
-      alert("Errore salvataggio: " + err.message);
+      alert("Errore creazione account: " + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -86,7 +88,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
       email: user.email,
       phone: user.phone || '',
       role: user.role,
-      password: '' // Non mostriamo la password esistente
+      password: '' 
     });
   };
 
@@ -209,10 +211,15 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                 <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-2">
                   <Button variant="ghost" onClick={() => { setIsAdding(false); setEditingUser(null); }}>Annulla</Button>
                   <Button type="submit" disabled={isSaving}>
-                    {isSaving ? "Salvataggio..." : editingUser ? "Aggiorna Utente" : "Crea Utente"}
+                    {isSaving ? "Creazione in corso..." : editingUser ? "Aggiorna Utente" : "Crea Utente"}
                   </Button>
                 </div>
               </form>
+              {!editingUser && (
+                <p className="text-[10px] text-blue-600 mt-4 italic">
+                  * Verrà creato un account di accesso reale. L'utente potrà loggarsi immediatamente con questa email e password.
+                </p>
+              )}
             </Card>
           )}
 
@@ -238,7 +245,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                       </button>
                       {u.id !== currentUser.id && (
                         <button 
-                          onClick={() => confirm("Eliminare questo utente?") && onRemoveUser(u.id)}
+                          onClick={() => confirm("Eliminare questo utente? Verrà rimosso solo da Firestore, l'accesso Auth va gestito manualmente.") && onRemoveUser(u.id)}
                           className="text-slate-300 hover:text-red-500 transition-colors p-1"
                           title="Rimuovi utente"
                         >

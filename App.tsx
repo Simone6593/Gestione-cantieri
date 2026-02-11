@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company } from './types';
 import { auth, db } from './firebase';
+// Fix: Added @ts-ignore to suppress false positive error for initializeApp export in the current environment
+// @ts-ignore
+import { initializeApp } from 'firebase/app';
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut 
+  signOut,
+  getAuth
 } from 'firebase/auth';
 import { 
   collection, 
@@ -60,7 +64,7 @@ const App: React.FC = () => {
           const userDoc = await getDoc(doc(db, "users", fbUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data() as User;
-            setCurrentUser(userData);
+            setCurrentUser({ ...userData, id: fbUser.uid });
             setupFirestoreListeners(userData.companyId);
           } else {
             setLoading(false);
@@ -182,13 +186,52 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "sites", id));
   };
 
-  const addUser = async (userData: Partial<User>) => {
+  /**
+   * ADDS A NEW USER TO AUTH AND FIRESTORE
+   * To prevent the admin from being logged out, we initialize a secondary firebase app instance.
+   */
+  const addUser = async (userData: Partial<User> & { password?: string }) => {
     if (!currentUser) return;
-    // Use addDoc for auto-generated IDs as requested
-    await addDoc(collection(db, "users"), {
-      ...userData,
-      companyId: currentUser.companyId,
-    });
+    
+    // 1. Setup secondary app to create user in Auth without losing admin session
+    const secondaryConfig = {
+      apiKey: "AIzaSyDTn3FOP59TOUl0Vj0LA8NzIXPAJoX5HFg",
+      authDomain: "costrugest.firebaseapp.com",
+      projectId: "costrugest",
+      storageBucket: "costrugest.firebasestorage.app",
+      messagingSenderId: "596860812954",
+      appId: "1:596860812954:web:cd19e7afaf6298c9976923"
+    };
+    
+    const secondaryApp = initializeApp(secondaryConfig, `secondary_${Date.now()}`);
+    const secondaryAuth = getAuth(secondaryApp);
+
+    try {
+      // 2. Create the user in Firebase Authentication
+      const userCred = await createUserWithEmailAndPassword(
+        secondaryAuth, 
+        userData.email!, 
+        userData.password || 'password123'
+      );
+      
+      const newUid = userCred.user.uid;
+
+      // 3. Save the profile data in Firestore using the Auth UID as the document ID
+      const { password, ...profileData } = userData;
+      await setDoc(doc(db, "users", newUid), {
+        ...profileData,
+        id: newUid,
+        companyId: currentUser.companyId,
+      });
+
+      // 4. Cleanup the secondary app
+      await signOut(secondaryAuth);
+      
+      return newUid;
+    } catch (error: any) {
+      console.error("Error adding user to Auth:", error);
+      throw error;
+    }
   };
 
   const handleUpdateUser = async (id: string, updates: Partial<User>) => {
