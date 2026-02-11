@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Card, Button } from '../components/Shared';
 import { AttendanceRecord, DailyReport, User, UserRole, Site } from '../types';
-import { Clock, MapPin, Calendar, ClipboardCheck, Trash2, Search, CheckCircle2, Filter, X } from 'lucide-react';
+import { Clock, MapPin, Calendar, ClipboardCheck, Trash2, Search, CheckCircle2, Filter, X, FileDown } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -110,6 +110,32 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
     setFilterDate('');
   };
 
+  const exportToCSV = () => {
+    const headers = ["Data", "Operaio", "Cantiere", "Entrata", "Uscita", "Rapportino Inviato", "Distanza Entrata"];
+    const rows = filteredAttendance.map(record => {
+      const recordDate = new Date(record.startTime).toLocaleDateString('it-IT');
+      return [
+        recordDate,
+        record.userName,
+        record.siteName,
+        formatTime(record.startTime),
+        formatTime(record.endTime),
+        record.reportSubmitted ? "Sì" : "No",
+        formatDistance(record.startCoords, record.siteId)
+      ];
+    });
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Registro_Timbrature_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -119,6 +145,10 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <Button onClick={exportToCSV} variant="secondary" className="bg-white border border-slate-200">
+             <FileDown size={18} /> Esporta CSV
+          </Button>
+
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 

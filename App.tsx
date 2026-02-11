@@ -130,7 +130,7 @@ const App: React.FC = () => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
     });
 
-    const qSites = query(collection(db, "sites"), where("aziendaId", "==", aziendaId));
+    const qSites = query(collection(db, "cantieri"), where("aziendaId", "==", aziendaId));
     onSnapshot(qSites, (snapshot) => {
       setSites(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Site)));
     });
@@ -140,7 +140,8 @@ const App: React.FC = () => {
       setReports(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport)));
     });
 
-    const qAttendance = query(collection(db, "attendance"), where("aziendaId", "==", aziendaId));
+    // Query sulla collezione 'timbrature' filtrata per aziendaId
+    const qAttendance = query(collection(db, "timbrature"), where("aziendaId", "==", aziendaId));
     onSnapshot(qAttendance, (snapshot) => {
       setAttendance(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
     });
@@ -222,7 +223,7 @@ const App: React.FC = () => {
 
   const addSite = async (site: Partial<Site>) => {
     if (!currentUser) return;
-    await addDoc(collection(db, "sites"), {
+    await addDoc(collection(db, "cantieri"), {
       ...site,
       aziendaId: currentUser.aziendaId,
       actualDays: 0,
@@ -231,12 +232,12 @@ const App: React.FC = () => {
   };
 
   const updateSite = async (id: string, updates: Partial<Site>) => {
-    await updateDoc(doc(db, "sites", id), updates);
+    await updateDoc(doc(db, "cantieri", id), updates);
   };
 
   const removeSite = async (id: string) => {
     if (!confirm("Sei sicuro di voler eliminare questo cantiere?")) return;
-    await deleteDoc(doc(db, "sites", id));
+    await deleteDoc(doc(db, "cantieri", id));
   };
 
   const addUser = async (userData: Partial<User> & { password?: string }) => {
@@ -310,7 +311,8 @@ const App: React.FC = () => {
     const site = sites.find(s => s.id === siteId);
     if (!site) return;
 
-    await addDoc(collection(db, "attendance"), {
+    // Salvataggio timbrata con aziendaId e userId obbligatori per isolamento
+    await addDoc(collection(db, "timbrature"), {
       aziendaId: currentUser.aziendaId,
       userId: currentUser.id,
       userName: `${currentUser.firstName} ${currentUser.lastName}`,
@@ -323,7 +325,8 @@ const App: React.FC = () => {
   };
 
   const handleClockOut = async (recordId: string, coords: { lat: number, lng: number }) => {
-    await updateDoc(doc(db, "attendance", recordId), {
+    // Aggiornamento fine turno sulla collezione timbrature
+    await updateDoc(doc(db, "timbrature", recordId), {
       endTime: new Date().toISOString(),
       endCoords: coords
     });
@@ -357,7 +360,7 @@ const App: React.FC = () => {
 
     const activeRec = attendance.find(a => a.userId === currentUser.id && !a.endTime);
     if (activeRec) {
-      await updateDoc(doc(db, "attendance", activeRec.id), {
+      await updateDoc(doc(db, "timbrature", activeRec.id), {
         endTime: new Date().toISOString(),
         endCoords: reportData.coords,
         reportSubmitted: true
@@ -367,7 +370,7 @@ const App: React.FC = () => {
     if (reportData.siteId) {
       const site = sites.find(s => s.id === reportData.siteId);
       if (site) {
-        await updateDoc(doc(db, "sites", site.id), { actualDays: site.actualDays + 1 });
+        await updateDoc(doc(db, "cantieri", site.id), { actualDays: site.actualDays + 1 });
       }
     }
     setActiveTab('attendance');
@@ -439,7 +442,7 @@ const App: React.FC = () => {
           attendance={attendance}
           reports={reports}
           sites={sites}
-          onRemoveRecord={async (id) => await deleteDoc(doc(db, "attendance", id))}
+          onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))}
         />
       )}
       {activeTab === 'resources' && (
