@@ -69,7 +69,6 @@ const App: React.FC = () => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
-          // Utilizziamo la collezione 'team' per i profili utente
           let userDocRef = doc(db, "team", fbUser.uid);
           let userDoc = await getDoc(userDocRef);
           
@@ -98,7 +97,6 @@ const App: React.FC = () => {
             return;
           }
 
-          console.log('Azienda ID caricato:', userData.aziendaId);
           const fullUser = { ...userData, id: fbUser.uid };
           setCurrentUser(fullUser);
           
@@ -122,19 +120,16 @@ const App: React.FC = () => {
   const setupFirestoreListeners = (aziendaId: string) => {
     setLoading(true);
 
-    // Sincronizzazione dati Azienda
     onSnapshot(doc(db, "aziende", aziendaId), (doc) => {
       if (doc.exists()) setCompany({ ...doc.data(), id: doc.id } as Company);
       else setCompany({ ...DEFAULT_COMPANY, id: aziendaId, name: 'Nuova Azienda' });
     });
 
-    // Filtro Team specifico per aziendaId
     const qTeam = query(collection(db, "team"), where("aziendaId", "==", aziendaId), where("isActive", "==", true));
     onSnapshot(qTeam, (snapshot) => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
     });
 
-    // Altri dati filtrati per aziendaId
     const qSites = query(collection(db, "sites"), where("aziendaId", "==", aziendaId));
     onSnapshot(qSites, (snapshot) => {
       setSites(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Site)));
@@ -246,7 +241,6 @@ const App: React.FC = () => {
 
   const addUser = async (userData: Partial<User> & { password?: string }) => {
     if (!currentUser) return;
-    // Query filtrata sulla nuova collezione 'team'
     const q = query(collection(db, "team"), where("email", "==", userData.email));
     const existingDocs = await getDocs(q);
     
@@ -287,7 +281,6 @@ const App: React.FC = () => {
       
       const newUid = userCred.user.uid;
       const { password, ...profileData } = userData;
-      // Inserimento automatico aziendaId nel nuovo documento del team
       await setDoc(doc(db, "team", newUid), {
         ...profileData,
         id: newUid,
@@ -453,8 +446,6 @@ const App: React.FC = () => {
         <Resources 
           currentUser={currentUser} 
           users={users} 
-          company={company}
-          onUpdateCompany={handleUpdateCompany}
           onAddUser={addUser} 
           onUpdateUser={handleUpdateUser}
           onRemoveUser={handleRemoveUser}
@@ -498,7 +489,11 @@ const App: React.FC = () => {
         />
       )}
       {activeTab === 'options' && (
-        <Options user={currentUser} company={company} />
+        <Options 
+          user={currentUser} 
+          company={company} 
+          onUpdateCompany={handleUpdateCompany}
+        />
       )}
     </Layout>
   );
