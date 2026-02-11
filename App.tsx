@@ -61,10 +61,10 @@ const App: React.FC = () => {
   const [schedules, setSchedules] = useState<Record<string, DailySchedule>>({});
 
   useEffect(() => {
-    // 1. Forza la persistenza di sessione (cancella login alla chiusura scheda)
+    // 1. Forza la persistenza di sessione (cancella login alla chiusura scheda/browser)
     setPersistence(auth, browserSessionPersistence).catch(console.error);
 
-    // 2. Pulizia "Cache" e dati locali all'avvio per garantire il ritorno al login
+    // 2. Pulizia "Cache" e dati locali all'avvio per garantire il ritorno al login ogni volta
     localStorage.clear();
     if ('caches' in window) {
       caches.keys().then(names => {
@@ -77,27 +77,46 @@ const App: React.FC = () => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
-          const userDoc = await getDoc(doc(db, "users", fbUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data() as User & { isActive?: boolean };
-            
-            if (userData.isActive === false) {
-              await signOut(auth);
-              setCurrentUser(null);
-              setLoading(false);
-              return;
-            }
-
-            const fullUser = { ...userData, id: fbUser.uid };
-            setCurrentUser(fullUser);
-            
-            if (userData.role === UserRole.WORKER) setActiveTab('attendance');
-            else setActiveTab('attendance-log');
-            
-            setupFirestoreListeners(userData.companyId);
-          } else {
-            setLoading(false);
+          let userDocRef = doc(db, "users", fbUser.uid);
+          let userDoc = await getDoc(userDocRef);
+          
+          // TABELLA UTENTI: Se non esiste il documento, lo creiamo e generiamo un aziendaId univoco
+          if (!userDoc.exists()) {
+            const newCompanyId = `azienda_${Date.now()}`;
+            const newUserDoc = {
+              id: fbUser.uid,
+              companyId: newCompanyId,
+              email: fbUser.email || '',
+              firstName: fbUser.displayName?.split(' ')[0] || 'Nuovo',
+              lastName: fbUser.displayName?.split(' ')[1] || 'Utente',
+              phone: '',
+              role: UserRole.WORKER,
+              isActive: true
+            };
+            await setDoc(userDocRef, newUserDoc);
+            userDoc = await getDoc(userDocRef);
           }
+
+          const userData = userDoc.data() as User & { isActive?: boolean };
+          
+          // Verifica stato account
+          if (userData.isActive === false) {
+            await signOut(auth);
+            setCurrentUser(null);
+            setLoading(false);
+            return;
+          }
+
+          // VERIFICA: Log dell'ID Azienda caricato come richiesto
+          console.log('Azienda ID caricato:', userData.companyId);
+
+          const fullUser = { ...userData, id: fbUser.uid };
+          setCurrentUser(fullUser);
+          
+          if (userData.role === UserRole.WORKER) setActiveTab('attendance');
+          else setActiveTab('attendance-log');
+          
+          setupFirestoreListeners(userData.companyId);
         } catch (e) {
           console.error("Error fetching user data", e);
           setLoading(false);
@@ -116,8 +135,13 @@ const App: React.FC = () => {
 
     onSnapshot(doc(db, "companies", companyId), (doc) => {
       if (doc.exists()) setCompany(doc.data() as Company);
+      else {
+        // Se l'azienda non esiste ancora in Firestore (nuovo account), impostiamo valori base
+        setCompany({ ...DEFAULT_COMPANY, id: companyId, name: 'Nuova Azienda' });
+      }
     });
 
+    // Filtriamo tutti i dati globalmente tramite aziendaId
     const qUsers = query(collection(db, "users"), where("companyId", "==", companyId), where("isActive", "==", true));
     onSnapshot(qUsers, (snapshot) => {
       setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
@@ -157,7 +181,6 @@ const App: React.FC = () => {
   }, [company]);
 
   const handleLogin = async (email: string, pass: string) => {
-    // Assicuriamoci che la persistenza sia settata prima del login
     await setPersistence(auth, browserSessionPersistence);
     const userCred = await signInWithEmailAndPassword(auth, email, pass);
     const userDoc = await getDoc(doc(db, "users", userCred.user.uid));
@@ -181,7 +204,9 @@ const App: React.FC = () => {
       await setPersistence(auth, browserSessionPersistence);
       const userCred = await createUserWithEmailAndPassword(auth, adminData.email!, adminData.password!);
       const uid = userCred.user.uid;
-      const companyId = `comp_${Date.now()}`;
+      
+      // Se l'utente è nuovo tramite registrazione esplicita, usiamo un ID Azienda formale
+      const companyId = `azienda_${Date.now()}`;
 
       await setDoc(doc(db, "companies", companyId), { ...companyData, id: companyId });
 
@@ -196,6 +221,8 @@ const App: React.FC = () => {
         isActive: true
       };
       await setDoc(doc(db, "users", uid), newAdmin);
+      
+      console.log('Azienda ID registrato:', companyId);
       
       setCurrentUser(newAdmin);
       setActiveTab('attendance-log');
