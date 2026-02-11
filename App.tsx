@@ -20,7 +20,7 @@ import {
   deleteDoc 
 } from 'firebase/firestore';
 import { requestNotificationPermission, notifyReportSubmitted, notifyScheduleChange } from './services/notificationService';
-import { summarizeWorkDescription } from './geminiService'; // Import Gemini service
+import { summarizeWorkDescription } from './geminiService';
 import Layout from './components/Layout';
 import Login from './views/Login';
 import Resources from './views/Resources';
@@ -63,7 +63,6 @@ const App: React.FC = () => {
             setCurrentUser(userData);
             setupFirestoreListeners(userData.companyId);
           } else {
-            // Caso utente appena registrato ma doc non ancora pronto
             setLoading(false);
           }
         } catch (e) {
@@ -82,36 +81,30 @@ const App: React.FC = () => {
   const setupFirestoreListeners = (companyId: string) => {
     setLoading(true);
 
-    // 1. Company Data
     onSnapshot(doc(db, "companies", companyId), (doc) => {
       if (doc.exists()) setCompany(doc.data() as Company);
     });
 
-    // 2. Users of same company
     const qUsers = query(collection(db, "users"), where("companyId", "==", companyId));
     onSnapshot(qUsers, (snapshot) => {
       setUsers(snapshot.docs.map(d => d.data() as User));
     });
 
-    // 3. Sites
     const qSites = query(collection(db, "sites"), where("companyId", "==", companyId));
     onSnapshot(qSites, (snapshot) => {
       setSites(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Site)));
     });
 
-    // 4. Reports
     const qReports = query(collection(db, "reports"), where("companyId", "==", companyId));
     onSnapshot(qReports, (snapshot) => {
       setReports(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport)));
     });
 
-    // 5. Attendance
     const qAttendance = query(collection(db, "attendance"), where("companyId", "==", companyId));
     onSnapshot(qAttendance, (snapshot) => {
       setAttendance(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
     });
 
-    // 6. Schedules
     const qSchedules = query(collection(db, "schedules"), where("companyId", "==", companyId));
     onSnapshot(qSchedules, (snapshot) => {
       const scheduleMap: Record<string, DailySchedule> = {};
@@ -183,6 +176,11 @@ const App: React.FC = () => {
     await updateDoc(doc(db, "sites", id), updates);
   };
 
+  const removeSite = async (id: string) => {
+    if (!confirm("Sei sicuro di voler eliminare questo cantiere? Tutti i dati associati potrebbero andare persi.")) return;
+    await deleteDoc(doc(db, "sites", id));
+  };
+
   const addUser = async (userData: Partial<User>) => {
     if (!currentUser) return;
     const tempId = `u-${Date.now()}`;
@@ -217,11 +215,9 @@ const App: React.FC = () => {
     });
   };
 
-  // Improved submitReport with Gemini AI summary integration
   const submitReport = async (reportData: Partial<DailyReport>) => {
     if (!currentUser) return;
 
-    // Fix: Ensure description is a string before passing to summarizer
     let summary = "";
     if (reportData.description) {
       try {
@@ -333,6 +329,7 @@ const App: React.FC = () => {
           sites={sites} 
           onAddSite={addSite} 
           onUpdateSite={updateSite} 
+          onRemoveSite={removeSite}
           showActive={true} 
         />
       )}
@@ -342,6 +339,7 @@ const App: React.FC = () => {
           sites={sites} 
           onAddSite={addSite} 
           onUpdateSite={updateSite} 
+          onRemoveSite={removeSite}
           showActive={false} 
         />
       )}

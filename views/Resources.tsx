@@ -1,7 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, Company } from '../types';
-import { UserPlus, Trash2, Mail, MessageSquare, Phone, Eye, EyeOff, Edit2, Camera, Building2, Palette, Save, X, Shield } from 'lucide-react';
+import { 
+  UserPlus, Trash2, Mail, MessageSquare, Phone, Eye, EyeOff, 
+  Camera, Building2, Palette, Save, X, Shield, Lock, User as UserIcon 
+} from 'lucide-react';
+import { auth } from '../firebase';
+import { updatePassword } from 'firebase/auth';
 
 interface ResourcesProps {
   currentUser: User;
@@ -14,11 +19,15 @@ interface ResourcesProps {
 }
 
 const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUpdateCompany, onAddUser, onUpdateUser, onRemoveUser }) => {
-  const [activeView, setActiveView] = useState<'users' | 'company'>('users');
+  const [activeView, setActiveView] = useState<'users' | 'company' | 'profile'>('users');
   const [isAdding, setIsAdding] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
   const [companyEdit, setCompanyEdit] = useState<Company>({ ...company });
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPass, setIsChangingPass] = useState(false);
+
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -59,16 +68,59 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
     setIsAdding(false);
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      alert("Le password non coincidono.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      alert("La password deve avere almeno 6 caratteri.");
+      return;
+    }
+
+    setIsChangingPass(true);
+    try {
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+        alert("Password aggiornata con successo!");
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error: any) {
+      alert("Errore durante l'aggiornamento: " + error.message);
+    } finally {
+      setIsChangingPass(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex gap-4 border-b border-slate-200 pb-2">
-        <button onClick={() => setActiveView('users')} className={`px-4 py-2 font-bold transition-all ${activeView === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Team</button>
-        {canEdit && <button onClick={() => setActiveView('company')} className={`px-4 py-2 font-bold transition-all ${activeView === 'company' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Profilo Azienda</button>}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+        <button 
+          onClick={() => setActiveView('users')} 
+          className={`px-4 py-2 font-bold transition-all ${activeView === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Team
+        </button>
+        <button 
+          onClick={() => setActiveView('profile')} 
+          className={`px-4 py-2 font-bold transition-all ${activeView === 'profile' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          Mio Profilo
+        </button>
+        {canEdit && (
+          <button 
+            onClick={() => setActiveView('company')} 
+            className={`px-4 py-2 font-bold transition-all ${activeView === 'company' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Azienda
+          </button>
+        )}
       </div>
 
-      {activeView === 'users' ? (
+      {activeView === 'users' && (
         <div className="space-y-6">
-          {/* Form Aggiunta Utente */}
           {isAdding && (
             <Card className="p-6 border-blue-200 bg-blue-50 animate-in fade-in slide-in-from-top-4">
               <div className="flex justify-between items-center mb-6">
@@ -81,30 +133,10 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
               </div>
               
               <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <Input 
-                  label="Nome" 
-                  value={formData.firstName} 
-                  onChange={e => setFormData({...formData, firstName: e.target.value})} 
-                  required 
-                />
-                <Input 
-                  label="Cognome" 
-                  value={formData.lastName} 
-                  onChange={e => setFormData({...formData, lastName: e.target.value})} 
-                  required 
-                />
-                <Input 
-                  label="Email" 
-                  type="email" 
-                  value={formData.email} 
-                  onChange={e => setFormData({...formData, email: e.target.value})} 
-                  required 
-                />
-                <Input 
-                  label="Telefono" 
-                  value={formData.phone} 
-                  onChange={e => setFormData({...formData, phone: e.target.value})} 
-                />
+                <Input label="Nome" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} required />
+                <Input label="Cognome" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} required />
+                <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
+                <Input label="Telefono" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-semibold text-slate-700">Ruolo</label>
                   <select 
@@ -151,7 +183,6 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                     <button 
                       onClick={() => confirm("Eliminare questo utente?") && onRemoveUser(u.id)}
                       className="text-slate-300 hover:text-red-500 transition-colors p-1"
-                      title="Rimuovi utente"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -177,7 +208,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                   </Button>
                   {u.phone && (
                     <Button variant="secondary" className="flex-1 text-xs py-2" onClick={() => window.open(`https://wa.me/${u.phone.replace(/\s+/g, '')}`)}>
-                      <MessageSquare size={14}/> WhatsApp
+                      <MessageSquare size={14}/> WA
                     </Button>
                   )}
                 </div>
@@ -197,13 +228,64 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
             )}
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeView === 'profile' && (
+        <div className="max-w-2xl mx-auto space-y-6">
+          <Card className="p-8 shadow-sm">
+            <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800 mb-6">
+              <UserIcon className="text-blue-600" /> I miei Dati
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Nome Completo</p>
+                <p className="font-semibold text-lg">{currentUser.firstName} {currentUser.lastName}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Email di Accesso</p>
+                <p className="font-semibold text-lg">{currentUser.email}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Ruolo</p>
+                <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs font-bold uppercase">{currentUser.role}</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-8 shadow-sm border-amber-100">
+            <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800 mb-6">
+              <Lock className="text-amber-600" /> Sicurezza Account
+            </h3>
+            <form onSubmit={handleChangePassword} className="space-y-4 max-w-sm">
+              <Input 
+                label="Nuova Password" 
+                type="password" 
+                value={newPassword} 
+                onChange={e => setNewPassword(e.target.value)} 
+                required 
+              />
+              <Input 
+                label="Conferma Password" 
+                type="password" 
+                value={confirmPassword} 
+                onChange={e => setConfirmPassword(e.target.value)} 
+                required 
+              />
+              <Button type="submit" className="w-full bg-amber-600 hover:bg-amber-700" disabled={isChangingPass}>
+                {isChangingPass ? "Aggiornamento..." : "Cambia Password"}
+              </Button>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {activeView === 'company' && canEdit && (
         <Card className="p-8 max-w-2xl mx-auto shadow-lg border-slate-100">
           <div className="flex justify-between items-center mb-8">
             <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
               <Building2 className="text-blue-600" /> Configurazione Branding
             </h3>
-            <Button onClick={() => { onUpdateCompany(companyEdit); alert("Impostazioni salvate con successo!"); }}>
+            <Button onClick={() => { onUpdateCompany(companyEdit); alert("Impostazioni salvate!"); }}>
               <Save size={18}/> Salva
             </Button>
           </div>
@@ -239,7 +321,6 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                     onChange={e => setCompanyEdit({...companyEdit, primaryColor: e.target.value})} 
                     className="w-full h-10 rounded-lg cursor-pointer border-0 p-0 overflow-hidden" 
                   />
-                  <span className="text-xs font-mono text-slate-400">{companyEdit.primaryColor.toUpperCase()}</span>
                 </div>
               </div>
             </div>

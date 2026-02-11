@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { Site, User, UserRole } from '../types';
-import { MapPin, ExternalLink, Plus, CheckCircle2, Construction, Edit2, Share2, FileUp, Map as MapIcon, X } from 'lucide-react';
+import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp } from 'lucide-react';
 import L from 'leaflet';
 
 interface SitesProps {
@@ -10,6 +9,7 @@ interface SitesProps {
   sites: Site[];
   onAddSite: (site: Partial<Site>) => void;
   onUpdateSite: (id: string, updates: Partial<Site>) => void;
+  onRemoveSite: (id: string) => void;
   showActive: boolean;
 }
 
@@ -70,7 +70,7 @@ const MapPickerModal: React.FC<{
         <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
             <MapIcon size={20} className="text-blue-600" />
-            Seleziona Punto Esatto Cantiere
+            Posizione Cantiere
           </h3>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <X size={20} className="text-slate-500" />
@@ -96,7 +96,7 @@ const MapPickerModal: React.FC<{
   );
 };
 
-const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSite, showActive }) => {
+const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSite, onRemoveSite, showActive }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
@@ -136,7 +136,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.client || !formData.address || !formData.coords) {
-      alert("Cliente, Indirizzo e Posizione sulla mappa sono obbligatori.");
+      alert("Cliente, Indirizzo e Posizione sono obbligatori.");
       return;
     }
 
@@ -160,9 +160,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, quoteUrl: reader.result as string });
-      };
+      reader.onloadend = () => setFormData({ ...formData, quoteUrl: reader.result as string });
       reader.readAsDataURL(file);
     }
   };
@@ -175,8 +173,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
         </h2>
         {showActive && canEdit && (
           <Button onClick={() => { resetForm(); setIsAdding(true); }}>
-            <Plus size={18} />
-            Nuovo Cantiere
+            <Plus size={18} /> Nuovo
           </Button>
         )}
       </div>
@@ -195,62 +192,22 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Input label="Cliente *" value={formData.client} onChange={e => setFormData({...formData, client: e.target.value})} required />
               <Input 
-                label="Cliente *" 
-                value={formData.client} 
-                onChange={e => setFormData({...formData, client: e.target.value})} 
-                required 
+                label="Indirizzo *" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} required 
+                suffix={<button type="button" onClick={() => setIsMapPickerOpen(true)} className="p-1 text-blue-600"><MapPin size={18} /></button>}
               />
-              
-              <Input 
-                label="Indirizzo *" 
-                value={formData.address} 
-                onChange={e => setFormData({...formData, address: e.target.value})} 
-                required 
-                placeholder="Via, Civico, Città"
-                suffix={
-                  <button 
-                    type="button" 
-                    onClick={() => setIsMapPickerOpen(true)}
-                    className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                  >
-                    <MapPin size={18} />
-                  </button>
-                }
-              />
-
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-semibold text-slate-700">Preventivo (PDF/Immagine)</label>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="secondary" 
-                    type="button" 
-                    className="w-full bg-white border-slate-200"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <FileUp size={16} />
-                    {formData.quoteUrl ? 'Caricato' : 'Carica File'}
-                  </Button>
-                </div>
+                <label className="text-sm font-semibold text-slate-700">Preventivo (PDF/IMG)</label>
+                <Button variant="secondary" type="button" className="bg-white" onClick={() => fileInputRef.current?.click()}>
+                   <FileUp size={16} /> {formData.quoteUrl ? 'Caricato' : 'Carica'}
+                </Button>
                 <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept=".pdf,image/*" />
               </div>
-
-              <Input 
-                label="Importo (€)" 
-                type="number" 
-                value={formData.budget === 0 ? '' : formData.budget.toString()} 
-                onChange={e => setFormData({...formData, budget: Number(e.target.value)})} 
-              />
-              
-              <Input 
-                label="Giornate Previste" 
-                type="number" 
-                value={formData.estimatedDays === 0 ? '' : formData.estimatedDays.toString()} 
-                onChange={e => setFormData({...formData, estimatedDays: Number(e.target.value)})} 
-              />
+              <Input label="Importo (€)" type="number" value={formData.budget.toString()} onChange={e => setFormData({...formData, budget: Number(e.target.value)})} />
+              <Input label="Giornate Previste" type="number" value={formData.estimatedDays.toString()} onChange={e => setFormData({...formData, estimatedDays: Number(e.target.value)})} />
             </div>
-
-            <div className="flex gap-2 justify-end mt-4">
+            <div className="flex gap-2 justify-end">
               <Button variant="ghost" onClick={resetForm}>Annulla</Button>
               <Button type="submit">Salva</Button>
             </div>
@@ -260,23 +217,32 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {filteredSites.map(site => (
-          <Card key={site.id} className="p-6 flex flex-col md:flex-row gap-6">
-            <div className="flex-1 space-y-4">
-              <div className="flex justify-between items-start">
+          <Card key={site.id} className="p-6">
+            <div className="flex justify-between items-start">
+              <div className="flex gap-4">
+                <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                  <Construction size={24} />
+                </div>
                 <div>
                   <h3 className="text-xl font-bold text-slate-800">{site.client}</h3>
-                  <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
-                    <MapPin size={14} />
-                    {site.address}
+                  <div className="flex items-center gap-1 text-slate-500 text-sm">
+                    <MapPin size={14} /> {site.address}
                   </div>
+                  <p className="text-xs text-slate-400 mt-2">Budget: €{site.budget.toLocaleString()} | Giorni: {site.actualDays}/{site.estimatedDays}</p>
                 </div>
-                {canEdit && (
-                  <button onClick={() => handleEdit(site)} className="p-2 text-slate-400 hover:text-blue-600"><Edit2 size={18} /></button>
-                )}
               </div>
+              {canEdit && (
+                <div className="flex gap-2">
+                  <button onClick={() => handleEdit(site)} className="p-2 text-slate-400 hover:text-blue-600"><Edit2 size={18} /></button>
+                  <button onClick={() => onRemoveSite(site.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18} /></button>
+                </div>
+              )}
             </div>
           </Card>
         ))}
+        {filteredSites.length === 0 && (
+          <div className="col-span-full py-12 text-center text-slate-400 border-2 border-dashed rounded-xl">Nessun cantiere in questa sezione.</div>
+        )}
       </div>
     </div>
   );
