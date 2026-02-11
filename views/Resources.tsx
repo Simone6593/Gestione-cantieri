@@ -3,7 +3,7 @@ import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, Company } from '../types';
 import { 
   UserPlus, Trash2, Mail, MessageSquare, Phone, Eye, EyeOff, 
-  Camera, Building2, Palette, Save, X, Shield, Lock, User as UserIcon 
+  Camera, Building2, Palette, Save, X, Shield, Lock, User as UserIcon, Edit2
 } from 'lucide-react';
 import { auth } from '../firebase';
 import { updatePassword } from 'firebase/auth';
@@ -21,7 +21,9 @@ interface ResourcesProps {
 const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUpdateCompany, onAddUser, onUpdateUser, onRemoveUser }) => {
   const [activeView, setActiveView] = useState<'users' | 'company' | 'profile'>('users');
   const [isAdding, setIsAdding] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const [companyEdit, setCompanyEdit] = useState<Company>({ ...company });
   const [newPassword, setNewPassword] = useState('');
@@ -50,22 +52,63 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
     }
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.firstName || !formData.lastName || !formData.email) {
       alert("Nome, Cognome ed Email sono obbligatori.");
       return;
     }
-    onAddUser(formData);
+    
+    setIsSaving(true);
+    try {
+      await onAddUser(formData);
+      setFormData({
+        firstName: '', 
+        lastName: '', 
+        email: '', 
+        phone: '', 
+        role: UserRole.WORKER, 
+        password: 'password123'
+      });
+      setIsAdding(false);
+    } catch (err: any) {
+      alert("Errore salvataggio: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditInit = (user: User) => {
+    setEditingUser(user);
     setFormData({
-      firstName: '', 
-      lastName: '', 
-      email: '', 
-      phone: '', 
-      role: UserRole.WORKER, 
-      password: 'password123'
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phone: user.phone || '',
+      role: user.role,
+      password: '' // Non mostriamo la password esistente
     });
-    setIsAdding(false);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    
+    setIsSaving(true);
+    try {
+      await onUpdateUser(editingUser.id, {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        role: formData.role
+      });
+      setEditingUser(null);
+    } catch (err: any) {
+      alert("Errore aggiornamento: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -121,18 +164,19 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
 
       {activeView === 'users' && (
         <div className="space-y-6">
-          {isAdding && (
+          {(isAdding || editingUser) && (
             <Card className="p-6 border-blue-200 bg-blue-50 animate-in fade-in slide-in-from-top-4">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-                  <UserPlus size={20} /> Nuovo Membro del Team
+                  {editingUser ? <Edit2 size={20} /> : <UserPlus size={20} />} 
+                  {editingUser ? 'Modifica Membro' : 'Nuovo Membro del Team'}
                 </h3>
-                <button onClick={() => setIsAdding(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => { setIsAdding(false); setEditingUser(null); }} className="text-slate-400 hover:text-slate-600">
                   <X size={20} />
                 </button>
               </div>
               
-              <form onSubmit={handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <form onSubmit={editingUser ? handleEditSubmit : handleAddSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Input label="Nome" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} required />
                 <Input label="Cognome" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} required />
                 <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
@@ -149,20 +193,24 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                     <option value={UserRole.ADMIN}>{UserRole.ADMIN}</option>
                   </select>
                 </div>
-                <Input 
-                  label="Password Iniziale" 
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password} 
-                  onChange={e => setFormData({...formData, password: e.target.value})}
-                  suffix={
-                    <button type="button" onClick={() => setShowPassword(!showPassword)}>
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  }
-                />
+                {!editingUser && (
+                  <Input 
+                    label="Password Iniziale" 
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password} 
+                    onChange={e => setFormData({...formData, password: e.target.value})}
+                    suffix={
+                      <button type="button" onClick={() => setShowPassword(!showPassword)}>
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    }
+                  />
+                )}
                 <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 mt-2">
-                  <Button variant="ghost" onClick={() => setIsAdding(false)}>Annulla</Button>
-                  <Button type="submit">Crea Utente</Button>
+                  <Button variant="ghost" onClick={() => { setIsAdding(false); setEditingUser(null); }}>Annulla</Button>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? "Salvataggio..." : editingUser ? "Aggiorna Utente" : "Crea Utente"}
+                  </Button>
                 </div>
               </form>
             </Card>
@@ -179,13 +227,25 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
                       <span className="text-[10px] text-blue-600 uppercase font-bold tracking-wider">{u.role}</span>
                     </div>
                   </div>
-                  {canEdit && u.id !== currentUser.id && (
-                    <button 
-                      onClick={() => confirm("Eliminare questo utente?") && onRemoveUser(u.id)}
-                      className="text-slate-300 hover:text-red-500 transition-colors p-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                  {canEdit && (
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleEditInit(u)}
+                        className="text-slate-300 hover:text-blue-500 transition-colors p-1"
+                        title="Modifica utente"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      {u.id !== currentUser.id && (
+                        <button 
+                          onClick={() => confirm("Eliminare questo utente?") && onRemoveUser(u.id)}
+                          className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                          title="Rimuovi utente"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 
@@ -215,7 +275,7 @@ const Resources: React.FC<ResourcesProps> = ({ currentUser, users, company, onUp
               </Card>
             ))}
             
-            {canEdit && !isAdding && (
+            {canEdit && !isAdding && !editingUser && (
               <button 
                 onClick={() => setIsAdding(true)} 
                 className="border-2 border-dashed border-slate-200 rounded-xl h-full min-h-[160px] flex flex-col items-center justify-center gap-3 text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all group"

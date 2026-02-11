@@ -85,9 +85,10 @@ const App: React.FC = () => {
       if (doc.exists()) setCompany(doc.data() as Company);
     });
 
+    // Real-time Users
     const qUsers = query(collection(db, "users"), where("companyId", "==", companyId));
     onSnapshot(qUsers, (snapshot) => {
-      setUsers(snapshot.docs.map(d => d.data() as User));
+      setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
     });
 
     const qSites = query(collection(db, "sites"), where("companyId", "==", companyId));
@@ -183,12 +184,15 @@ const App: React.FC = () => {
 
   const addUser = async (userData: Partial<User>) => {
     if (!currentUser) return;
-    const tempId = `u-${Date.now()}`;
-    await setDoc(doc(db, "users", tempId), {
+    // Use addDoc for auto-generated IDs as requested
+    await addDoc(collection(db, "users"), {
       ...userData,
-      id: tempId,
       companyId: currentUser.companyId,
     });
+  };
+
+  const handleUpdateUser = async (id: string, updates: Partial<User>) => {
+    await updateDoc(doc(db, "users", id), updates);
   };
 
   const handleClockIn = async (siteId: string, coords: { lat: number, lng: number }) => {
@@ -319,7 +323,7 @@ const App: React.FC = () => {
           company={company}
           onUpdateCompany={async (c) => await updateDoc(doc(db, "companies", currentUser.companyId), c as any)}
           onAddUser={addUser} 
-          onUpdateUser={async (id, u) => await updateDoc(doc(db, "users", id), u)}
+          onUpdateUser={handleUpdateUser}
           onRemoveUser={async (id) => await deleteDoc(doc(db, "users", id))}
         />
       )}
