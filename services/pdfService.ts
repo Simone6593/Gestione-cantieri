@@ -2,6 +2,34 @@
 import { jsPDF } from 'jspdf';
 import { DailyReport, Company } from '../types';
 
+/**
+ * Helper per ottenere le dimensioni naturali di un'immagine base64 o URL
+ */
+const getImageDimensions = (url: string): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = reject;
+    img.src = url;
+  });
+};
+
+/**
+ * Calcola le dimensioni proporzionali all'interno di un box massimo
+ */
+const getScaledDimensions = (imgW: number, imgH: number, maxW: number, maxH: number) => {
+  const ratio = imgW / imgH;
+  let width = maxW;
+  let height = maxW / ratio;
+
+  if (height > maxH) {
+    height = maxH;
+    width = maxH * ratio;
+  }
+
+  return { width, height };
+};
+
 export const generateReportPDF = async (report: DailyReport, company: Company) => {
   const doc = new jsPDF();
   const primaryColor = company.primaryColor || '#2563eb';
@@ -11,17 +39,29 @@ export const generateReportPDF = async (report: DailyReport, company: Company) =
   doc.setFillColor(primaryColor);
   doc.rect(0, 0, 210, 50, 'F');
   
-  // Company Logo
+  let logoWidth = 0;
+  let logoHeight = 0;
+  let headerX = 20;
+
+  // Company Logo con proporzioni mantenute
   if (company.logoUrl) {
     try {
-      doc.addImage(company.logoUrl, 'PNG', 10, 10, 30, 30, undefined, 'FAST');
+      const dims = await getImageDimensions(company.logoUrl);
+      const scaled = getScaledDimensions(dims.width, dims.height, 40, 30);
+      logoWidth = scaled.width;
+      logoHeight = scaled.height;
+      
+      // Centratura verticale nel box dell'header (50mm altezza)
+      const logoY = (50 - logoHeight) / 2;
+      doc.addImage(company.logoUrl, 'PNG', 10, logoY, logoWidth, logoHeight, undefined, 'FAST');
+      headerX = 20 + logoWidth;
     } catch (e) {
       console.error("PDF Logo error", e);
+      headerX = 20;
     }
   }
 
   // Company Details (Header Text)
-  const headerX = company.logoUrl ? 50 : 20;
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
@@ -97,17 +137,21 @@ export const generateReportPDF = async (report: DailyReport, company: Company) =
     currentY += 15 + (splitNotes.length * 5);
   }
 
-  // Report Photo
+  // Report Photo con proporzioni mantenute
   if (report.photoUrl) {
-    // Check if we need a new page
-    if (currentY > 200) {
-      doc.addPage();
-      currentY = 20;
-    }
     try {
+      const photoDims = await getImageDimensions(report.photoUrl);
+      const photoScaled = getScaledDimensions(photoDims.width, photoDims.height, 170, 110);
+      
+      // Controllo se serve nuova pagina
+      if (currentY + photoScaled.height + 10 > 280) {
+        doc.addPage();
+        currentY = 20;
+      }
+
       doc.setFont('helvetica', 'bold');
       doc.text('DOCUMENTAZIONE FOTOGRAFICA:', 20, currentY);
-      doc.addImage(report.photoUrl, 'JPEG', 20, currentY + 5, 170, 110, undefined, 'FAST');
+      doc.addImage(report.photoUrl, 'JPEG', 20, currentY + 5, photoScaled.width, photoScaled.height, undefined, 'FAST');
     } catch (e) {
       console.error("PDF Image error", e);
     }
