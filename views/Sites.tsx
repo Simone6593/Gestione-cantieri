@@ -1,8 +1,8 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { Site, User, UserRole } from '../types';
-import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp, Layers, Navigation } from 'lucide-react';
+import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp, Layers, Navigation, Search, Loader2 } from 'lucide-react';
 import maplibregl from 'maplibre-gl';
 
 interface SitesProps {
@@ -14,20 +14,63 @@ interface SitesProps {
   showActive: boolean;
 }
 
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // Stile vettoriale ultra-veloce e gratuito
+const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
 const MapPickerModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (lat: number, lng: number) => void;
+  onConfirm: (lat: number, lng: number, address?: string) => void;
   initialCoords?: { latitude: number; longitude: number };
 }> = ({ isOpen, onClose, onConfirm, initialCoords }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [selectedPos, setSelectedPos] = useState<{ lat: number, lng: number } | null>(
     initialCoords ? { lat: initialCoords.latitude, lng: initialCoords.longitude } : null
   );
+
+  // Funzione per cercare indirizzo tramite Nominatim (OpenStreetMap)
+  const handleAddressSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim() || !mapRef.current) return;
+
+    setIsSearching(true);
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=1`);
+      const data = await response.json();
+
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        const newLat = parseFloat(lat);
+        const newLon = parseFloat(lon);
+
+        mapRef.current.flyTo({
+          center: [newLon, newLat],
+          zoom: 16,
+          essential: true
+        });
+
+        setSelectedPos({ lat: newLat, lng: newLon });
+        
+        if (markerRef.current) {
+          markerRef.current.setLngLat([newLon, newLat]);
+        } else {
+          markerRef.current = new maplibregl.Marker({ color: "#2563eb" })
+            .setLngLat([newLon, newLat])
+            .addTo(mapRef.current);
+        }
+      } else {
+        alert("Indirizzo non trovato. Prova ad essere più specifico.");
+      }
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      alert("Errore durante la ricerca dell'indirizzo.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && mapContainerRef.current && !mapRef.current) {
@@ -38,11 +81,18 @@ const MapPickerModal: React.FC<{
         container: mapContainerRef.current,
         style: MAP_STYLE,
         center: [initialLng, initialLat],
-        zoom: 12,
-        antialias: true
+        zoom: initialCoords ? 15 : 12,
+        antialias: true,
+        trackResize: true
       });
 
       mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+      // Gestione ridimensionamento automatico
+      const resizer = new ResizeObserver(() => {
+        mapRef.current?.resize();
+      });
+      resizer.observe(mapContainerRef.current);
 
       if (initialCoords) {
         markerRef.current = new maplibregl.Marker({ color: "#2563eb" })
@@ -62,6 +112,10 @@ const MapPickerModal: React.FC<{
             .addTo(mapRef.current!);
         }
       });
+
+      return () => {
+        resizer.disconnect();
+      };
     }
 
     return () => {
@@ -76,27 +130,43 @@ const MapPickerModal: React.FC<{
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[80vh]">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[90vh] sm:h-[80vh]">
+        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
               <MapIcon size={18} />
             </div>
-            <h3 className="font-bold text-slate-800">Seleziona Posizione Cantiere</h3>
+            <h3 className="font-bold text-slate-800">Localizza Cantiere</h3>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <X size={20} className="text-slate-500" />
           </button>
         </div>
         
-        <div className="flex-1 relative">
-          <div ref={mapContainerRef} className="absolute inset-0" />
-          <div className="absolute top-4 left-4 z-10">
-            <div className="bg-white/90 backdrop-blur p-2 rounded-lg shadow-sm border border-slate-200 text-[10px] font-bold uppercase">
-              Fai click sulla mappa per posizionare il marker
-            </div>
+        <div className="flex-1 relative min-h-0">
+          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+          
+          {/* Barra di ricerca Indirizzo */}
+          <div className="absolute top-4 left-4 right-14 z-10 max-w-md">
+            <form onSubmit={handleAddressSearch} className="flex gap-2 bg-white/95 backdrop-blur p-1.5 rounded-xl shadow-lg border border-slate-200">
+              <input 
+                type="text" 
+                placeholder="Cerca via o città..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm outline-none bg-transparent"
+              />
+              <Button 
+                type="submit" 
+                className="h-9 w-9 p-0 flex items-center justify-center shrink-0" 
+                disabled={isSearching}
+              >
+                {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              </Button>
+            </form>
           </div>
+
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-full max-w-xs px-4">
             <Button 
               className="w-full shadow-2xl h-12 text-lg font-bold" 
@@ -136,21 +206,31 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
   const canEdit = currentUser.role === UserRole.ADMIN;
   const filteredSites = sites.filter(s => s.isActive === showActive);
 
-  // Inizializzazione e Aggiornamento Mappa Globale (GPU Accelerated)
+  // Sincronizzazione Mappa Globale
   useEffect(() => {
     if (showGlobalMap && globalMapRef.current && !mapInstanceRef.current) {
       mapInstanceRef.current = new maplibregl.Map({
         container: globalMapRef.current,
         style: MAP_STYLE,
-        center: [12.5674, 41.8719], // Centro Italia
+        center: [12.5674, 41.8719], 
         zoom: 5,
-        antialias: true
+        antialias: true,
+        trackResize: true
       });
       mapInstanceRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+      // Resize Observer per la mappa globale
+      const resizer = new ResizeObserver(() => {
+        mapInstanceRef.current?.resize();
+      });
+      resizer.observe(globalMapRef.current);
+
+      return () => {
+        resizer.disconnect();
+      };
     }
 
     if (mapInstanceRef.current) {
-      // Rimuovi marker esistenti
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
@@ -162,10 +242,10 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
           hasCoords = true;
           const popup = new maplibregl.Popup({ offset: 25 })
             .setHTML(`
-              <div style="font-family: 'Inter', sans-serif;">
-                <h4 style="font-weight: bold; color: #1e293b; margin-bottom: 4px;">${site.client}</h4>
+              <div style="font-family: 'Inter', sans-serif; padding: 4px;">
+                <h4 style="font-weight: bold; color: #1e293b; margin-bottom: 4px; font-size: 14px;">${site.client}</h4>
                 <p style="font-size: 11px; color: #64748b; margin: 0;">${site.address}</p>
-                <div style="margin-top: 8px; font-weight: bold; color: #2563eb; font-size: 12px;">€ ${site.budget.toLocaleString()}</div>
+                <div style="margin-top: 8px; font-weight: bold; color: #2563eb; font-size: 12px;">Budget: € ${site.budget.toLocaleString()}</div>
               </div>
             `);
 
@@ -180,7 +260,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
       });
 
       if (hasCoords) {
-        mapInstanceRef.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+        mapInstanceRef.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
       }
     }
   }, [showGlobalMap, filteredSites]);
@@ -266,7 +346,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, onAddSite, onUpdateSi
 
       {showGlobalMap && (
         <Card className="h-80 md:h-[450px] relative overflow-hidden animate-in fade-in duration-700 shadow-xl border-slate-200">
-           <div ref={globalMapRef} className="absolute inset-0" />
+           <div ref={globalMapRef} className="absolute inset-0 w-full h-full" />
            <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
               <Navigation size={12} className="text-blue-600 animate-pulse" />
               Rendering WebGL Attivo
