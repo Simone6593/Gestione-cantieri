@@ -1,5 +1,7 @@
+
 // @ts-ignore - Ensure firebase/app is correctly resolved in the environment
 import { initializeApp } from 'firebase/app';
+// @ts-ignore - Bypass type resolution error in specific environment
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getAnalytics } from 'firebase/analytics';

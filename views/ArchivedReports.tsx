@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card, Button } from '../components/Shared';
 import { DailyReport, Company, User, UserRole } from '../types';
-import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Sparkles, Download, Trash2 } from 'lucide-react';
+import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Download, Trash2 } from 'lucide-react';
 import { generateReportPDF } from '../services/pdfService';
 
 interface ArchivedReportsProps {
@@ -80,14 +80,6 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ currentUser, reports,
 
               <div className="space-y-1">
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Lavorazioni eseguite</div>
-                {report.summary && (
-                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 mb-3 animate-in fade-in slide-in-from-left-2">
-                    <div className="flex items-center gap-1.5 text-blue-600 font-bold text-[10px] uppercase mb-1">
-                      <Sparkles size={12} /> Riepilogo AI
-                    </div>
-                    <p className="text-sm text-blue-800 font-medium italic">"{report.summary}"</p>
-                  </div>
-                )}
                 <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                   {report.description}
                 </p>

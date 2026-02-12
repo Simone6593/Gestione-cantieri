@@ -4,6 +4,7 @@ import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Com
 import { auth, db } from './firebase';
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
+// @ts-ignore - Bypass type resolution error in specific environment
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -28,7 +29,6 @@ import {
   deleteDoc 
 } from 'firebase/firestore';
 import { requestNotificationPermission, notifyReportSubmitted, notifyScheduleChange } from './services/notificationService';
-import { summarizeWorkDescription } from './geminiService';
 import Layout from './components/Layout';
 import Login from './views/Login';
 import Resources from './views/Resources';
@@ -140,7 +140,6 @@ const App: React.FC = () => {
       setReports(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport)));
     });
 
-    // Query sulla collezione 'timbrature' filtrata per aziendaId
     const qAttendance = query(collection(db, "timbrature"), where("aziendaId", "==", aziendaId));
     onSnapshot(qAttendance, (snapshot) => {
       setAttendance(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
@@ -311,7 +310,6 @@ const App: React.FC = () => {
     const site = sites.find(s => s.id === siteId);
     if (!site) return;
 
-    // Salvataggio timbrata con aziendaId e userId obbligatori per isolamento
     await addDoc(collection(db, "timbrature"), {
       aziendaId: currentUser.aziendaId,
       userId: currentUser.id,
@@ -325,7 +323,6 @@ const App: React.FC = () => {
   };
 
   const handleClockOut = async (recordId: string, coords: { lat: number, lng: number }) => {
-    // Aggiornamento fine turno sulla collezione timbrature
     await updateDoc(doc(db, "timbrature", recordId), {
       endTime: new Date().toISOString(),
       endCoords: coords
@@ -339,41 +336,37 @@ const App: React.FC = () => {
 
   const submitReport = async (reportData: Partial<DailyReport>) => {
     if (!currentUser) return;
-    let summary = "";
-    if (reportData.description) {
-      try {
-        summary = await summarizeWorkDescription(reportData.description);
-      } catch (err) {
-        console.error("AI summary failed", err);
-      }
-    }
-
+    
     const report: Partial<DailyReport> = {
       ...reportData,
-      summary,
       aziendaId: currentUser.aziendaId,
       timestamp: new Date().toISOString()
     };
     
-    await addDoc(collection(db, "reports"), report);
-    notifyReportSubmitted(currentUser.firstName, report.siteName || '');
+    try {
+      await addDoc(collection(db, "reports"), report);
+      notifyReportSubmitted(currentUser.firstName, report.siteName || '');
 
-    const activeRec = attendance.find(a => a.userId === currentUser.id && !a.endTime);
-    if (activeRec) {
-      await updateDoc(doc(db, "timbrature", activeRec.id), {
-        endTime: new Date().toISOString(),
-        endCoords: reportData.coords,
-        reportSubmitted: true
-      });
-    }
-
-    if (reportData.siteId) {
-      const site = sites.find(s => s.id === reportData.siteId);
-      if (site) {
-        await updateDoc(doc(db, "cantieri", site.id), { actualDays: site.actualDays + 1 });
+      const activeRec = attendance.find(a => a.userId === currentUser.id && !a.endTime);
+      if (activeRec) {
+        await updateDoc(doc(db, "timbrature", activeRec.id), {
+          endTime: new Date().toISOString(),
+          endCoords: reportData.coords,
+          reportSubmitted: true
+        });
       }
+
+      if (reportData.siteId) {
+        const site = sites.find(s => s.id === reportData.siteId);
+        if (site) {
+          await updateDoc(doc(db, "cantieri", site.id), { actualDays: site.actualDays + 1 });
+        }
+      }
+      setActiveTab('attendance');
+    } catch (error) {
+      console.error("Error submitting report:", error);
+      alert("Errore durante l'invio del rapportino. Riprova.");
     }
-    setActiveTab('attendance');
   };
 
   const handleUpdateSchedule = async (date: string, schedule: DailySchedule) => {

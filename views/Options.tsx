@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, Company, UserRole } from '../types';
 import { auth, db } from '../firebase';
+// @ts-ignore - Bypass type resolution error in specific environment
 import { updatePassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { 

@@ -66,7 +66,6 @@ export interface DailyReport {
   workerNames: string[];
   date: string;
   description: string;
-  summary?: string;
   notes: string;
   photoUrl?: string;
   timestamp: string;
