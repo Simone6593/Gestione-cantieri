@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card, Button } from '../components/Shared';
 import { DailyReport, Company, User, UserRole } from '../types';
-import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Download, Trash2 } from 'lucide-react';
+import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Download, Trash2, Image as ImageIcon } from 'lucide-react';
 import { generateReportPDF } from '../services/pdfService';
 
 interface ArchivedReportsProps {
@@ -73,9 +73,6 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ currentUser, reports,
                     </span>
                   ))}
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Compilato da: <span className="font-semibold text-slate-500">{report.compilerName}</span>
-                </p>
               </div>
 
               <div className="space-y-1">
@@ -85,9 +82,23 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ currentUser, reports,
                 </p>
               </div>
 
-              {report.photoUrl && (
-                <div className="mt-2 rounded-lg overflow-hidden border border-slate-200">
-                  <img src={report.photoUrl} className="w-full h-32 object-cover" alt="Foto cantiere" />
+              {report.photoUrls && report.photoUrls.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon size={14} /> Foto ({report.photoUrls.length})
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {report.photoUrls.slice(0, 3).map((url, idx) => (
+                      <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-slate-200 relative">
+                        <img src={url} className="w-full h-full object-cover" alt="Foto cantiere" />
+                        {idx === 2 && report.photoUrls!.length > 3 && (
+                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs font-bold">
+                            +{report.photoUrls!.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -104,18 +115,6 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ currentUser, reports,
           </Card>
         ))}
       </div>
-
-      {reports.length === 0 && (
-        <div className="py-24 text-center bg-white rounded-2xl border border-dashed border-slate-200">
-          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-            <Clipboard size={32} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-800">Nessun rapportino trovato</h3>
-          <p className="text-slate-500 max-w-xs mx-auto mt-1">
-            Non ci sono ancora rapporti archiviati nel database.
-          </p>
-        </div>
-      )}
     </div>
   );
 };

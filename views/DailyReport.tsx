@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Button } from '../components/Shared';
 import { User, Site, DailyReport, DailySchedule } from '../types';
-import { Camera, Send, Plus, Users, Clipboard, X, MapPin } from 'lucide-react';
+import { Camera, Send, Plus, Users, Clipboard, X, MapPin, Check } from 'lucide-react';
 
 interface DailyReportFormProps {
   user: User;
@@ -16,7 +16,7 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
-  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [currentCoords, setCurrentCoords] = useState<{ lat: number, lng: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,10 +31,12 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
       );
     }
 
-    // WORKERS automatically loaded from schedule
+    // WORKERS pre-caricati dal programma, ma modificabili
     if (activeSite && schedules[todayStr]) {
-      const assignedIds = schedules[todayStr].siteAssignments[activeSite.id] || [];
-      setSelectedWorkers(assignedIds);
+      const assignedIds = (schedules[todayStr].siteAssignments[activeSite.id] || []) as string[];
+      // Includiamo sempre il compilatore se non è già presente
+      const initialSelection = assignedIds.includes(user.id) ? assignedIds : [...assignedIds, user.id];
+      setSelectedWorkers(initialSelection);
     } else {
       setSelectedWorkers([user.id]);
     }
@@ -51,15 +53,27 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
     );
   }
 
+  const toggleWorker = (id: string) => {
+    setSelectedWorkers(prev => 
+      prev.includes(id) ? prev.filter(wId => wId !== id) : [...prev, id]
+    );
+  };
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    const files = e.target.files;
+    if (files) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPhotoUrls(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
     }
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotoUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -71,6 +85,11 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
     
     if (!currentCoords) {
       alert("Attendi il rilevamento GPS per inviare il rapportino.");
+      return;
+    }
+
+    if (selectedWorkers.length === 0) {
+      alert("Seleziona almeno un lavoratore presente in cantiere.");
       return;
     }
 
@@ -88,14 +107,14 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
       date: todayStr,
       description,
       notes,
-      photoUrl: photoUrl,
+      photoUrls: photoUrls,
       timestamp: new Date().toISOString(),
       coords: currentCoords
     });
 
     setDescription('');
     setNotes('');
-    setPhotoUrl(undefined);
+    setPhotoUrls([]);
   };
 
   return (
@@ -108,11 +127,35 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
           <div>
             <h2 className="text-xl font-bold text-slate-800">Nuovo Rapportino</h2>
             <p className="text-sm text-slate-500">Cantiere: <span className="font-semibold text-blue-600">{activeSite.client}</span></p>
-            <p className="text-[10px] text-slate-400 mt-1">Gli operai presenti verranno caricati automaticamente dal programma del giorno.</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Sezione Personale Presente */}
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <Users size={16} className="text-blue-500" /> Personale Presente Oggi
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {allWorkers.map(worker => (
+                <button
+                  key={worker.id}
+                  type="button"
+                  onClick={() => toggleWorker(worker.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    selectedWorkers.includes(worker.id) 
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-blue-300'
+                  }`}
+                >
+                  {selectedWorkers.includes(worker.id) && <Check size={12} />}
+                  {worker.firstName} {worker.lastName}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400">Tocca un nome per aggiungere o rimuovere un operaio dal rapporto di oggi.</p>
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-slate-700">Descrizione Lavorazioni</label>
             <textarea
@@ -135,38 +178,40 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-slate-700">Foto</label>
-            <div className="flex flex-wrap gap-4">
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                className="hidden" 
-                accept="image/*" 
-                capture="environment"
-                onChange={handlePhotoUpload} 
-              />
+            <label className="text-sm font-semibold text-slate-700">Documentazione Fotografica</label>
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+              {photoUrls.map((url, idx) => (
+                <div key={idx} className="aspect-square rounded-xl border border-slate-200 bg-slate-100 relative group overflow-hidden">
+                  <img src={url} className="w-full h-full object-cover" alt={`Foto ${idx + 1}`} />
+                  <button 
+                    type="button" 
+                    onClick={() => removePhoto(idx)} 
+                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
               
               <button 
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="h-24 w-24 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-all bg-slate-50 overflow-hidden relative"
+                className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-all bg-slate-50"
               >
-                {photoUrl ? (
-                  <img src={photoUrl} className="w-full h-full object-cover" alt="Anteprima" />
-                ) : (
-                  <>
-                    <Camera size={24} />
-                    <span className="text-[10px]">Scatta/Carica</span>
-                  </>
-                )}
+                <Plus size={24} />
+                <span className="text-[10px] font-bold">Aggiungi</span>
               </button>
-
-              {photoUrl && (
-                <button type="button" onClick={() => setPhotoUrl(undefined)} className="text-red-500">
-                  <X size={20} />
-                </button>
-              )}
             </div>
+            
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              multiple 
+              accept="image/*" 
+              capture="environment"
+              onChange={handlePhotoUpload} 
+            />
           </div>
 
           <div className="flex flex-col gap-4">
@@ -179,9 +224,6 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
               <Send size={18} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
               Invia e Timbra Fine Turno
             </Button>
-            <p className="text-[10px] text-slate-400 text-center italic">
-              Nota: l'invio del rapportino effettuerà automaticamente la timbratura d'uscita (Clock Out) per te.
-            </p>
           </div>
         </form>
       </Card>

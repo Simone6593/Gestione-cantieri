@@ -1,3 +1,4 @@
+
 export enum UserRole {
   ADMIN = 'Amministratore',
   SUPERVISOR = 'Supervisore',
@@ -66,7 +67,7 @@ export interface DailyReport {
   date: string;
   description: string;
   notes: string;
-  photoUrl?: string;
+  photoUrls?: string[]; // Supporto multi-foto
   timestamp: string;
   coords?: { lat: number; lng: number };
 }
