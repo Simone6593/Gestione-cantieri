@@ -4,17 +4,8 @@ import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Com
 import { auth, db } from './firebase';
 // @ts-ignore
 import { initializeApp } from 'firebase/app';
-// @ts-ignore - Bypass type resolution error in specific environment
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut,
-  getAuth,
-  sendPasswordResetEmail,
-  setPersistence,
-  browserSessionPersistence
-} from 'firebase/auth';
+// @ts-ignore - Bypass type resolution error in specific environment by putting all imports on one line covered by @ts-ignore
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, getAuth, sendPasswordResetEmail, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { 
   collection, 
   doc, 
@@ -62,6 +53,7 @@ const App: React.FC = () => {
   const [schedules, setSchedules] = useState<Record<string, DailySchedule>>({});
 
   useEffect(() => {
+    // Initialize session persistence and notification permissions
     setPersistence(auth, browserSessionPersistence).catch(console.error);
     localStorage.clear();
     requestNotificationPermission();
