@@ -11,6 +11,9 @@ const firebaseConfig = {
   apiKey: "AIzaSyDTn3FOP59TOUl0Vj0LA8NzIXPAJoX5HFg",
   authDomain: "costrugest.firebaseapp.com",
   projectId: "costrugest",
+  // ATTENZIONE: Se hai appena attivato lo Storage, il nome potrebbe essere diverso.
+  // Controlla in Console Firebase -> Storage -> Tabella File (inizia con gs://)
+  // Esempio: "costrugest.firebasestorage.app" oppure "costrugest-xxxxx.appspot.com"
   storageBucket: "costrugest.firebasestorage.app",
   messagingSenderId: "596860812954",
   appId: "1:596860812954:web:cd19e7afaf6298c9976923",
@@ -24,6 +27,8 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+console.log("Firebase Storage initialized on bucket:", firebaseConfig.storageBucket);
 
 // Safe initialization for Analytics (only in browser environment)
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;

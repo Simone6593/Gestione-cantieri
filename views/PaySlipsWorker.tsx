@@ -15,8 +15,9 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Puntiamo alla nuova collezione pay_slips_data
     const q = query(
-      collection(db, 'pay_slips'),
+      collection(db, 'pay_slips_data'),
       where('userId', '==', currentUser.id),
       orderBy('uploadDate', 'desc')
     );
@@ -33,7 +34,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
     if (!confirm("Confermi di aver preso visione della busta paga?")) return;
 
     try {
-      const psRef = doc(db, 'pay_slips', id);
+      const psRef = doc(db, 'pay_slips_data', id);
       await updateDoc(psRef, {
         acceptedDate: new Date().toISOString(),
         status: 'Accettata'
@@ -44,12 +45,25 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
     }
   };
 
+  const openPdf = (base64Data?: string) => {
+    if (!base64Data) {
+      alert("Dati file mancanti.");
+      return;
+    }
+    const win = window.open();
+    if (win) {
+      win.document.write(`<iframe src="${base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+    } else {
+      alert("Popup bloccato dal browser. Consenti i popup per visualizzare la busta paga.");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Le mie Buste Paga</h2>
-          <p className="text-sm text-slate-500">Visualizza e accetta i documenti caricati dall'amministrazione.</p>
+          <p className="text-sm text-slate-500">Documenti caricati digitalmente dall'amministrazione (Firestore DB).</p>
         </div>
       </div>
 
@@ -68,7 +82,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
             <div className="space-y-1 mb-6">
               <h3 className="font-bold text-lg text-slate-800">Busta Paga {ps.month}</h3>
               <p className="text-xs text-slate-500 flex items-center gap-1">
-                <Calendar size={12} /> Caricata il: {new Date(ps.uploadDate).toLocaleDateString('it-IT')}
+                <Calendar size={12} /> Archiviata il: {new Date(ps.uploadDate).toLocaleDateString('it-IT')}
               </p>
               {ps.acceptedDate && (
                 <p className="text-xs text-green-600 flex items-center gap-1 font-semibold">
@@ -81,7 +95,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
               <Button 
                 variant="secondary" 
                 className="w-full text-sm py-2 bg-slate-100 hover:bg-slate-200 text-slate-700"
-                onClick={() => window.open(ps.fileUrl, '_blank')}
+                onClick={() => openPdf(ps.fileData)}
               >
                 <ExternalLink size={14} /> Visualizza PDF
               </Button>
@@ -102,7 +116,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
           <div className="col-span-full py-20 text-center bg-white border-2 border-dashed border-slate-200 rounded-3xl">
             <FileText size={48} className="mx-auto text-slate-200 mb-4" />
             <h3 className="text-xl font-bold text-slate-400">Nessuna busta paga</h3>
-            <p className="text-sm text-slate-400">Non ci sono ancora documenti disponibili per te.</p>
+            <p className="text-sm text-slate-400">Non ci sono ancora documenti archiviati nel database per te.</p>
           </div>
         )}
       </div>

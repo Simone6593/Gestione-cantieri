@@ -34,7 +34,9 @@ export interface PaySlip {
   userId: string;
   userName: string;
   month: string; // Formato "MM/YYYY"
-  fileUrl: string;
+  fileData?: string; // Stringa Base64 del PDF
+  fileUrl?: string; // Mantenuto per compatibilità legacy o file esterni
+  fileName: string;
   uploadDate: string;
   acceptedDate?: string | null;
   status: 'In attesa' | 'Accettata';

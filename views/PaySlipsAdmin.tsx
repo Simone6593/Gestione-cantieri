@@ -2,10 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, PaySlip } from '../types';
-import { db, storage, auth } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, addDoc, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Upload, FileText, CheckCircle, Clock, Trash2, Calendar, User as UserIcon } from 'lucide-react';
+import { Upload, FileText, Trash2, User as UserIcon, AlertTriangle, FileWarning } from 'lucide-react';
 
 interface PaySlipsAdminProps {
   currentUser: User;
@@ -22,8 +21,9 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
   const workers = users.filter(u => u.role === UserRole.WORKER);
 
   useEffect(() => {
+    // Carichiamo i dati dalla nuova collezione pay_slips_data
     const q = query(
-      collection(db, 'pay_slips'),
+      collection(db, 'pay_slips_data'),
       where('aziendaId', '==', currentUser.aziendaId)
     );
 
@@ -36,69 +36,78 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
     return () => unsubscribe();
   }, [currentUser.aziendaId]);
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Debug Auth
-    console.log("DEBUG: Current Auth State:", auth.currentUser ? "Autenticato" : "NON Autenticato");
-    console.log("DEBUG: Auth UID:", auth.currentUser?.uid);
-
     if (!auth.currentUser) {
-      alert("Errore: Sessione scaduta o non valida. Effettua nuovamente il login.");
+      alert("Errore: Utente non autenticato.");
       return;
     }
 
     if (!selectedUser || !month || !file) {
-      alert("Seleziona utente, mese e file PDF.");
+      alert("Seleziona dipendente, mese e file PDF.");
+      return;
+    }
+
+    // Limite di 1MB per i documenti Firestore
+    const MAX_SIZE = 1024 * 1024; // 1MB in bytes
+    if (file.size > MAX_SIZE) {
+      alert("Il file è troppo grande! Il limite massimo è 1MB per l'archiviazione diretta in database. Comprimi il PDF o usa un file più piccolo.");
       return;
     }
 
     setIsUploading(true);
     try {
       const worker = users.find(u => u.id === selectedUser);
-      const fileName = `${month.replace('/', '-')}_${Date.now()}.pdf`;
-      const storageRef = ref(storage, `pay_slips/${selectedUser}/${fileName}`);
-      
-      // Definiamo i metadati per forzare il Content-Type (risolve molti problemi CORS e Rules)
-      const metadata = {
-        contentType: 'application/pdf',
-        customMetadata: {
-          'aziendaId': currentUser.aziendaId,
-          'userId': selectedUser,
-          'month': month
-        }
-      };
+      const base64Data = await fileToBase64(file);
+      const fileName = `${month.replace('/', '-')}_${worker?.lastName}.pdf`;
 
-      console.log("DEBUG: Inizio uploadBytes su path:", storageRef.fullPath);
-      const snapshot = await uploadBytes(storageRef, file, metadata);
-      const fileUrl = await getDownloadURL(snapshot.ref);
-
-      await addDoc(collection(db, 'pay_slips'), {
+      // Salvataggio diretto su Firestore (collezione pay_slips_data)
+      await addDoc(collection(db, 'pay_slips_data'), {
         aziendaId: currentUser.aziendaId,
         userId: selectedUser,
         userName: `${worker?.firstName} ${worker?.lastName}`,
         month,
-        fileUrl,
+        fileName,
+        fileData: base64Data, // Salviamo la stringa Base64
         uploadDate: new Date().toISOString(),
+        uploadedAt: new Date().toISOString(),
         acceptedDate: null,
         status: 'In attesa'
       });
 
-      alert("Busta paga caricata correttamente!");
+      alert("Busta paga salvata nel database con successo!");
       setSelectedUser('');
       setMonth('');
       setFile(null);
     } catch (error: any) {
-      console.error("ERRORE CARICAMENTO STORAGE:", error);
-      alert("Errore durante il caricamento: " + (error.message || "Controlla la console per i dettagli."));
+      console.error("ERRORE SALVATAGGIO:", error);
+      alert("Errore durante il salvataggio nel database: " + error.message);
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Sei sicuro di voler eliminare questa busta paga?")) {
-      await deleteDoc(doc(db, 'pay_slips', id));
+    if (confirm("Sei sicuro di voler eliminare questa busta paga dal database?")) {
+      await deleteDoc(doc(db, 'pay_slips_data', id));
+    }
+  };
+
+  const openPdf = (base64Data?: string) => {
+    if (!base64Data) return;
+    const win = window.open();
+    if (win) {
+      win.document.write(`<iframe src="${base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
     }
   };
 
@@ -106,7 +115,7 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
     <div className="space-y-8">
       <Card className="p-6">
         <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-          <Upload className="text-blue-600" /> Invia Nuova Busta Paga
+          <Upload className="text-blue-600" /> Archivia Busta Paga (Base64)
         </h3>
         
         <form onSubmit={handleUpload} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -129,12 +138,19 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
             label="Mese (MM/AAAA)" 
             value={month} 
             onChange={e => setMonth(e.target.value)} 
-            placeholder="es. 10/2023"
+            placeholder="es. 02/2026"
             required
           />
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-slate-700">File PDF</label>
+            <label className="text-sm font-semibold text-slate-700 flex justify-between">
+              File PDF 
+              {file && (
+                <span className={`text-[10px] ${file.size > 1024*1024 ? 'text-red-500 font-bold' : 'text-slate-400'}`}>
+                  {(file.size / 1024).toFixed(1)} KB / 1024 KB
+                </span>
+              )}
+            </label>
             <input 
               type="file" 
               accept="application/pdf"
@@ -145,14 +161,17 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
           </div>
 
           <Button type="submit" disabled={isUploading} className="w-full">
-            {isUploading ? "Caricamento..." : "Invia File"}
+            {isUploading ? "Salvataggio..." : "Archivia in DB"}
           </Button>
         </form>
+        <p className="mt-4 text-[10px] text-slate-400 italic flex items-center gap-1">
+          <AlertTriangle size={12} /> Nota: I file vengono salvati direttamente nel database Firestore. Limite massimo per file: 1MB.
+        </p>
       </Card>
 
       <div className="space-y-4">
         <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          <FileText className="text-blue-600" /> Storico Caricamenti
+          <FileText className="text-blue-600" /> Database Buste Paga
         </h3>
 
         <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -161,9 +180,8 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="p-4 font-bold text-slate-600">Dipendente</th>
                 <th className="p-4 font-bold text-slate-600">Mese</th>
-                <th className="p-4 font-bold text-slate-600">Caricato il</th>
+                <th className="p-4 font-bold text-slate-600">Data Upload</th>
                 <th className="p-4 font-bold text-slate-600">Stato</th>
-                <th className="p-4 font-bold text-slate-600">Accettato il</th>
                 <th className="p-4 font-bold text-slate-600 text-right">Azioni</th>
               </tr>
             </thead>
@@ -171,27 +189,24 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
               {paySlips.map((ps) => (
                 <tr key={ps.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                   <td className="p-4">
-                    <div className="flex items-center gap-2 font-semibold">
+                    <div className="flex items-center gap-2 font-semibold text-slate-700">
                       <UserIcon size={14} className="text-slate-400" />
                       {ps.userName}
                     </div>
                   </td>
-                  <td className="p-4 font-mono">{ps.month}</td>
+                  <td className="p-4 font-mono text-slate-600">{ps.month}</td>
                   <td className="p-4 text-slate-500">{new Date(ps.uploadDate).toLocaleDateString('it-IT')}</td>
                   <td className="p-4">
                     <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${ps.status === 'Accettata' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                       {ps.status}
                     </span>
                   </td>
-                  <td className="p-4 text-slate-500">
-                    {ps.acceptedDate ? new Date(ps.acceptedDate).toLocaleDateString('it-IT') : '---'}
-                  </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button 
-                        onClick={() => window.open(ps.fileUrl, '_blank')}
+                        onClick={() => openPdf(ps.fileData)}
                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                        title="Visualizza"
+                        title="Vedi PDF (Base64)"
                       >
                         <FileText size={16} />
                       </button>
@@ -208,9 +223,7 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
               ))}
               {paySlips.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400 italic">
-                    Nessuna busta paga caricata finora.
-                  </td>
+                  <td colSpan={5} className="p-8 text-center text-slate-400 italic">Nessuna busta paga archiviata in Firestore.</td>
                 </tr>
               )}
             </tbody>
