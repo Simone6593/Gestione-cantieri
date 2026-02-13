@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card, Button } from '../components/Shared';
 import { DailyReport, Company, User, UserRole } from '../types';
-import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Download, Trash2, Image as ImageIcon } from 'lucide-react';
+import { FileText, User as UserIcon, Calendar, Clock, Clipboard, Download, Trash2, Image as ImageIcon, MapPin } from 'lucide-react';
 import { generateReportPDF } from '../services/pdfService';
 
 interface ArchivedReportsProps {
@@ -46,9 +46,16 @@ const ArchivedReports: React.FC<ArchivedReportsProps> = ({ currentUser, reports,
                 <span className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider">
                   {report.id}
                 </span>
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <Clock size={12} />
-                  {new Date(report.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                <div className="flex flex-col items-end">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <Clock size={12} />
+                    {new Date(report.timestamp).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  {report.coords && (
+                    <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 uppercase mt-0.5">
+                      <MapPin size={10} /> GPS OK
+                    </div>
+                  )}
                 </div>
               </div>
               <h3 className="text-lg font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors">

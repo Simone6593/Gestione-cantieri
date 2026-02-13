@@ -222,7 +222,17 @@ const App: React.FC = () => {
           allWorkers={users.filter(u => u.role === UserRole.WORKER)}
           schedules={schedules}
           onSubmit={async (r) => {
+            // 1. Salva il rapportino
             await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId });
+            
+            // 2. Clock-out automatico se esiste una timbratura attiva
+            if (activeAttendance) {
+              await updateDoc(doc(db, "timbrature", activeAttendance.id), { 
+                endTime: new Date().toISOString(), 
+                endCoords: r.coords || null // Usa le coordinate del rapporto per la chiusura
+              });
+            }
+            
             setActiveTab('attendance');
           }}
         />

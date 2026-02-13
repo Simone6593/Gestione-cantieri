@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company } from '../types';
-import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History } from 'lucide-react';
+import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -77,12 +77,16 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
     return analysisMap;
   }, [filteredAttendance, paySlips]);
 
-  const renderGpsIndicator = (workerCoords?: { lat: number, lng: number }) => {
-    if (!workerCoords) return <div className="w-3 h-3 rounded-full bg-slate-200" title="GPS non disponibile" />;
+  const renderGpsIndicator = (label: string, coords?: { lat: number, lng: number }) => {
+    if (!coords) return (
+      <div className="flex items-center gap-1 text-[8px] font-bold text-slate-300 uppercase">
+        <MapPin size={10} /> {label} No-GPS
+      </div>
+    );
     return (
-      <span title="GPS OK">
-        <CheckCircle2 size={12} className="text-green-500" />
-      </span>
+      <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 uppercase" title={`Lat: ${coords.lat}, Lng: ${coords.lng}`}>
+        <CheckCircle2 size={10} /> {label} GPS OK
+      </div>
     );
   };
 
@@ -104,7 +108,6 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
         endTime: editData.endTime ? new Date(editData.endTime).toISOString() : undefined,
       };
 
-      // Se è la prima modifica manuale, salviamo gli orari originali dell'app
       if (!originalRecord.originalStartTime) {
         updates.originalStartTime = originalRecord.startTime;
       }
@@ -124,7 +127,7 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Registro Timbrature</h2>
-          <p className="text-sm text-slate-500">Log cronologico con analisi costi per commessa.</p>
+          <p className="text-sm text-slate-500">Log cronologico con verifica GPS e analisi costi.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
@@ -217,7 +220,6 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                   <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
                       <span className="flex items-center gap-1">Inizio {hasBeenEdited && <span className="text-[8px] text-amber-600">(MOD)</span>}</span>
-                      {renderGpsIndicator(record.startCoords)}
                     </div>
                     {isEditing ? (
                       <input type="datetime-local" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} className="w-full text-sm font-bold bg-transparent outline-none text-slate-800" />
@@ -227,12 +229,14 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                         {record.originalStartTime && <div className="text-[9px] text-slate-400 font-mono italic">Orig: {formatTime(record.originalStartTime)}</div>}
                       </div>
                     )}
+                    <div className="pt-1 border-t border-slate-200/50 mt-1">
+                      {renderGpsIndicator("In", record.startCoords)}
+                    </div>
                   </div>
 
                   <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : (record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100')}`}>
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
                       <span className="flex items-center gap-1">Fine {hasBeenEdited && <span className="text-[8px] text-amber-600">(MOD)</span>}</span>
-                      {renderGpsIndicator(record.endCoords)}
                     </div>
                     {isEditing ? (
                       <input type="datetime-local" value={editData.endTime} onChange={e => setEditData({...editData, endTime: e.target.value})} className="w-full text-sm font-bold bg-transparent outline-none text-slate-800" />
@@ -242,6 +246,9 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                         {record.originalEndTime && <div className="text-[9px] text-slate-400 font-mono italic">Orig: {formatTime(record.originalEndTime)}</div>}
                       </div>
                     )}
+                    <div className="pt-1 border-t border-slate-200/50 mt-1">
+                      {renderGpsIndicator("Out", record.endCoords)}
+                    </div>
                   </div>
 
                   <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'flex items-center justify-center bg-amber-500 text-white' : (report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60')}`}>
@@ -254,9 +261,11 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                       <>
                         <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
                           <span>Rapportino</span>
-                          {renderGpsIndicator(report?.coords)}
                         </div>
                         <div className="text-lg font-bold text-slate-800">{report ? formatTime(report.timestamp) : '---'}</div>
+                        <div className="pt-1 border-t border-blue-200/50 mt-1">
+                          {renderGpsIndicator("Rep", report?.coords)}
+                        </div>
                       </>
                     )}
                   </div>
