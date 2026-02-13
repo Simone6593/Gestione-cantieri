@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Button } from '../components/Shared';
 import { User, Site, DailyReport, DailySchedule } from '../types';
@@ -59,10 +60,11 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, all
     );
   };
 
+  // Fix: Explicitly type 'file' as 'File' to resolve 'unknown' type inference causing Blob assignment errors
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      Array.from(files).forEach(file => {
+      Array.from(files).forEach((file: File) => {
         const reader = new FileReader();
         reader.onloadend = () => {
           setPhotoUrls(prev => [...prev, reader.result as string]);

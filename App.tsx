@@ -30,6 +30,8 @@ import ArchivedReports from './views/ArchivedReports';
 import Schedule from './views/Schedule';
 import AttendanceLog from './views/AttendanceLog';
 import Options from './views/Options';
+import PaySlipsAdmin from './views/PaySlipsAdmin';
+import PaySlipsWorker from './views/PaySlipsWorker';
 
 const DEFAULT_COMPANY: Company = {
   name: 'Caricamento...',
@@ -428,6 +430,17 @@ const App: React.FC = () => {
           reports={reports}
           sites={sites}
           onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))}
+        />
+      )}
+      {activeTab === 'admin-pay-slips' && (
+        <PaySlipsAdmin 
+          currentUser={currentUser}
+          users={users}
+        />
+      )}
+      {activeTab === 'worker-pay-slips' && (
+        <PaySlipsWorker 
+          currentUser={currentUser}
         />
       )}
       {activeTab === 'resources' && (

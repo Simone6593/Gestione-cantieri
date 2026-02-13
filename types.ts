@@ -28,6 +28,18 @@ export interface User {
   avatarUrl?: string;
 }
 
+export interface PaySlip {
+  id: string;
+  aziendaId: string;
+  userId: string;
+  userName: string;
+  month: string; // Formato "MM/YYYY"
+  fileUrl: string;
+  uploadDate: string;
+  acceptedDate?: string | null;
+  status: 'In attesa' | 'Accettata';
+}
+
 export interface Site {
   id: string;
   aziendaId: string;

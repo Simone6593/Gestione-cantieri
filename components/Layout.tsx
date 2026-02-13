@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, ClipboardCheck, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings
+  Users, Construction, Archive, Clock, ClipboardCheck, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -23,6 +23,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
     { id: 'daily-report', label: 'Rapportino', icon: ClipboardCheck, roles: [] }, 
     { id: 'attendance-log', label: 'Registro Timbrature', icon: ListFilter, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
+    { id: 'worker-pay-slips', label: 'Le mie Buste Paga', icon: FileText, roles: [UserRole.WORKER] },
+    { id: 'admin-pay-slips', label: 'Gestione Buste Paga', icon: FileText, roles: [UserRole.ADMIN] },
     { id: 'resources', label: 'Gestione Dipendenti', icon: Users, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'active-sites', label: 'Cantieri Attivi', icon: Construction, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'completed-sites', label: 'Cantieri Conclusi', icon: Archive, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
@@ -38,7 +40,9 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
       attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "La 'Fine' si timbra automaticamente con il rapportino."] },
       resources: { title: "Gestione Team", steps: ["Aggiungi nuovi operai con il tasto '+'.", "L'eliminazione blocca l'accesso ai dati.", "Puoi modificare i ruoli dei dipendenti."] },
       schedule: { title: "Programma Lavori", steps: ["Trascina i nomi dai disponibili ai cantieri.", "Swipe a destra/sinistra per cambiare data.", "Invia il riepilogo al gruppo WhatsApp aziendale."] },
-      options: { title: "Opzioni & Profilo", steps: ["Aggiorna qui la tua password personale.", "Visualizza i tuoi dati o quelli aziendali.", "Cambia il logo o il colore del brand."] }
+      options: { title: "Opzioni & Profilo", steps: ["Aggiorna qui la tua password personale.", "Visualizza i tuoi dati o quelli aziendali.", "Cambia il logo o il colore del brand."] },
+      'worker-pay-slips': { title: "Buste Paga", steps: ["Qui puoi vedere tutte le tue buste paga.", "Clicca 'Visualizza' per aprire il PDF.", "Clicca 'Accetta' per confermare la ricezione."] },
+      'admin-pay-slips': { title: "Invio Buste Paga", steps: ["Seleziona un dipendente e un mese.", "Carica il file PDF corrispondente.", "Monitora lo stato di accettazione dai dipendenti."] }
     };
     return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Controlla le opzioni per la tua sicurezza.", "Contatta l'admin per permessi aggiuntivi."] };
   };
