@@ -78,6 +78,8 @@ export interface AttendanceRecord {
   siteName: string;
   startTime: string;
   endTime?: string;
+  originalStartTime?: string; // Orario originale pre-modifica manuale
+  originalEndTime?: string;   // Orario originale pre-modifica manuale
   startCoords?: { lat: number; lng: number };
   endCoords?: { lat: number; lng: number };
   reportSubmitted: boolean;

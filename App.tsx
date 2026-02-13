@@ -263,6 +263,8 @@ const App: React.FC = () => {
         <Sites 
           currentUser={currentUser} 
           sites={sites} 
+          attendance={attendance}
+          paySlips={paySlips}
           onAddSite={async (s) => { await addDoc(collection(db, "cantieri"), { ...s, aziendaId: currentUser.aziendaId, isActive: true }); }} 
           onUpdateSite={async (id, upd) => { await updateDoc(doc(db, "cantieri", id), upd); }} 
           onRemoveSite={async (id) => { await deleteDoc(doc(db, "cantieri", id)); }}
@@ -273,6 +275,8 @@ const App: React.FC = () => {
         <Sites 
           currentUser={currentUser} 
           sites={sites} 
+          attendance={attendance}
+          paySlips={paySlips}
           onAddSite={async (s) => {}} 
           onUpdateSite={async (id, upd) => {}} 
           onRemoveSite={async (id) => {}}
