@@ -4,7 +4,7 @@ import { Card, Button } from '../components/Shared';
 import { User, PaySlip } from '../types';
 import { db } from '../firebase';
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
-import { FileText, CheckCircle, Clock, Download, ExternalLink, Calendar } from 'lucide-react';
+import { FileText, CheckCircle, ExternalLink, Calendar, Check } from 'lucide-react';
 
 interface PaySlipsWorkerProps {
   currentUser: User;
@@ -15,7 +15,6 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Puntiamo alla nuova collezione pay_slips_data
     const q = query(
       collection(db, 'pay_slips_data'),
       where('userId', '==', currentUser.id),
@@ -39,7 +38,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
         acceptedDate: new Date().toISOString(),
         status: 'Accettata'
       });
-      alert("Busta paga accettata correttamente.");
+      alert("Documento accettato correttamente.");
     } catch (error) {
       alert("Errore durante l'aggiornamento.");
     }
@@ -63,7 +62,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Le mie Buste Paga</h2>
-          <p className="text-sm text-slate-500">Documenti caricati digitalmente dall'amministrazione (Firestore DB).</p>
+          <p className="text-sm text-slate-500">Documenti digitali salvati in database.</p>
         </div>
       </div>
 
@@ -71,22 +70,29 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
         {paySlips.map((ps) => (
           <Card key={ps.id} className={`p-5 flex flex-col transition-all hover:shadow-md border-t-4 ${ps.status === 'Accettata' ? 'border-t-green-500' : 'border-t-amber-500'}`}>
             <div className="flex justify-between items-start mb-4">
-              <div className="bg-slate-100 p-3 rounded-xl text-slate-600">
+              <div className={`p-3 rounded-xl ${ps.status === 'Accettata' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-600'}`}>
                 <FileText size={24} />
               </div>
-              <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${ps.status === 'Accettata' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                {ps.status}
-              </span>
+              <div className="flex flex-col items-end">
+                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${ps.status === 'Accettata' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {ps.status}
+                </span>
+                {ps.status === 'Accettata' && (
+                  <span className="text-[10px] font-bold text-green-600 mt-1 flex items-center gap-1">
+                    <Check size={12} /> (accettata)
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="space-y-1 mb-6">
               <h3 className="font-bold text-lg text-slate-800">Busta Paga {ps.month}</h3>
               <p className="text-xs text-slate-500 flex items-center gap-1">
-                <Calendar size={12} /> Archiviata il: {new Date(ps.uploadDate).toLocaleDateString('it-IT')}
+                <Calendar size={12} /> Caricata il: {new Date(ps.uploadDate).toLocaleDateString('it-IT')}
               </p>
               {ps.acceptedDate && (
                 <p className="text-xs text-green-600 flex items-center gap-1 font-semibold">
-                  <CheckCircle size={12} /> Accettata il: {new Date(ps.acceptedDate).toLocaleDateString('it-IT')}
+                  <CheckCircle size={12} /> Visionata il: {new Date(ps.acceptedDate).toLocaleDateString('it-IT')}
                 </p>
               )}
             </div>
@@ -116,7 +122,7 @@ const PaySlipsWorker: React.FC<PaySlipsWorkerProps> = ({ currentUser }) => {
           <div className="col-span-full py-20 text-center bg-white border-2 border-dashed border-slate-200 rounded-3xl">
             <FileText size={48} className="mx-auto text-slate-200 mb-4" />
             <h3 className="text-xl font-bold text-slate-400">Nessuna busta paga</h3>
-            <p className="text-sm text-slate-400">Non ci sono ancora documenti archiviati nel database per te.</p>
+            <p className="text-sm text-slate-400">Non ci sono ancora documenti archiviati per te.</p>
           </div>
         )}
       </div>
