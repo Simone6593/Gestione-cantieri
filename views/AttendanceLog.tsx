@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, Button } from '../components/Shared';
-import { AttendanceRecord, DailyReport, User, UserRole, Site } from '../types';
-import { Clock, MapPin, Calendar, ClipboardCheck, Trash2, Search, CheckCircle2, Filter, X, FileDown } from 'lucide-react';
+import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company } from '../types';
+import { Clock, MapPin, Calendar, ClipboardCheck, Trash2, Search, CheckCircle2, Filter, X, FileDown, Calculator, Info } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -10,11 +10,18 @@ interface AttendanceLogProps {
   reports: DailyReport[];
   sites: Site[];
   onRemoveRecord: (id: string) => void;
+  // For calculation, we need access to company settings and pay slips
+  company?: Company;
+  paySlips?: PaySlip[];
 }
 
-const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, reports, sites, onRemoveRecord }) => {
+const AttendanceLog: React.FC<AttendanceLogProps> = ({ 
+  currentUser, attendance, reports, sites, onRemoveRecord, company, paySlips = [] 
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [showCostAnalysis, setShowCostAnalysis] = useState(false);
+  
   const canEdit = currentUser.role === UserRole.ADMIN;
 
   const filteredAttendance = attendance
@@ -51,103 +58,84 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
     return R * c;
   };
 
-  const formatDistance = (workerCoords?: { lat: number, lng: number }, siteId?: string) => {
-    if (!workerCoords) return "N/D";
-    const site = sites.find(s => s.id === siteId);
-    if (!site || !site.coords) return "N/D";
-
-    const distance = getDistance(
-      workerCoords.lat, 
-      workerCoords.lng, 
-      site.coords.latitude, 
-      site.coords.longitude
-    );
-
-    if (distance < 1000) {
-      return `${Math.round(distance)}m`;
-    } else {
-      return `${(distance / 1000).toFixed(1)}km`;
-    }
+  const calculateHours = (start: string, end?: string) => {
+    if (!end) return 0;
+    return (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60);
   };
 
-  const renderGpsIndicator = (workerCoords?: { lat: number, lng: number }, siteId?: string) => {
-    if (!workerCoords) return <div className="w-3 h-3 rounded-full bg-slate-300" title="GPS Non Disponibile" />;
-    const site = sites.find(s => s.id === siteId);
-    if (!site || !site.coords) return <div className="w-3 h-3 rounded-full bg-slate-300" title="Cantiere non localizzato" />;
+  // Logica di calcolo costo reale (Algoritmo richiesto)
+  const costAnalysis = useMemo(() => {
+    if (!company?.costParameters) return null;
+    const params = company.costParameters;
 
-    const distance = getDistance(
-      workerCoords.lat, 
-      workerCoords.lng, 
-      site.coords.latitude, 
-      site.coords.longitude
-    );
+    const analysisMap: Record<string, { totalHours: number, realHourlyRate: number, totalRealCost: number }> = {};
 
-    if (distance < 500) {
-      return (
-        <span className="flex items-center" title={`In cantiere (${Math.round(distance)}m)`}>
-          <CheckCircle2 size={12} className="text-green-500" />
-        </span>
-      );
-    } else if (distance < 1000) {
-      return <div className="w-3 h-3 rounded-full bg-amber-500 shadow-sm" title={`Fuori cantiere (${Math.round(distance)}m)`} />;
-    } else {
-      return <div className="w-3 h-3 rounded-full bg-red-500 shadow-sm" title={`Lontano (${(distance / 1000).toFixed(1)}km)`} />;
-    }
-  };
+    filteredAttendance.forEach(record => {
+      if (!record.endTime) return;
+      const hours = calculateHours(record.startTime, record.endTime);
+      const recordMonth = new Date(record.startTime).getMonth() + 1;
+      const recordYear = new Date(record.startTime).getFullYear();
+      const monthKey = `${recordMonth.toString().padStart(2, '0')}/${recordYear}`;
+      
+      // Cerchiamo la busta paga corrispondente
+      const ps = paySlips.find(p => p.userId === record.userId && p.month === monthKey);
+      
+      if (ps && ps.competenzeLorde) {
+        // Calcolo componenti costo
+        const costoPrevidenziale = (ps.imponibileInps || 0) * (params.inpsRate / 100);
+        const costoAssicurativo = (ps.imponibileInail || 0) * (params.inailRate / 100);
+        const costoCassaEdileExtra = (ps.imponibileInps || 0) * (params.cassaEdileRate / 100);
+        const accantonamentoTfr = (ps.competenzeLorde || 0) / (params.tfrDivisor || 13.5);
+        
+        const costoTotaleMensile = ps.competenzeLorde + costoPrevidenziale + costoAssicurativo + costoCassaEdileExtra + accantonamentoTfr;
+        
+        // Calcolo ore totali del mese per quel dipendente
+        const monthlyHours = attendance
+          .filter(a => a.userId === record.userId && a.startTime.includes(`${recordYear}-${recordMonth.toString().padStart(2, '0')}`))
+          .reduce((sum, a) => sum + calculateHours(a.startTime, a.endTime), 0);
 
-  const formatCoords = (coords?: { lat: number, lng: number }) => {
-    if (!coords) return 'N/D';
-    return `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
-  };
-
-  const formatTime = (isoString?: string) => {
-    if (!isoString) return '---';
-    return new Date(isoString).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const clearFilters = () => {
-    setSearchTerm('');
-    setFilterDate('');
-  };
-
-  const exportToCSV = () => {
-    const headers = ["Data", "Operaio", "Cantiere", "Entrata", "Uscita", "Rapportino Inviato", "Distanza Entrata"];
-    const rows = filteredAttendance.map(record => {
-      const recordDate = new Date(record.startTime).toLocaleDateString('it-IT');
-      return [
-        recordDate,
-        record.userName,
-        record.siteName,
-        formatTime(record.startTime),
-        formatTime(record.endTime),
-        record.reportSubmitted ? "Sì" : "No",
-        formatDistance(record.startCoords, record.siteId)
-      ];
+        const realHourlyRate = monthlyHours > 0 ? costoTotaleMensile / monthlyHours : 0;
+        
+        analysisMap[record.id] = {
+          totalHours: hours,
+          realHourlyRate: realHourlyRate,
+          totalRealCost: hours * realHourlyRate
+        };
+      }
     });
 
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Registro_Timbrature_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return analysisMap;
+  }, [filteredAttendance, company, paySlips, attendance]);
+
+  const renderGpsIndicator = (workerCoords?: { lat: number, lng: number }, siteId?: string) => {
+    if (!workerCoords) return <div className="w-3 h-3 rounded-full bg-slate-300" />;
+    const site = sites.find(s => s.id === siteId);
+    if (!site || !site.coords) return <div className="w-3 h-3 rounded-full bg-slate-300" />;
+    const distance = getDistance(workerCoords.lat, workerCoords.lng, site.coords.latitude, site.coords.longitude);
+    if (distance < 500) return <CheckCircle2 size={12} className="text-green-500" />;
+    return <div className={`w-3 h-3 rounded-full ${distance < 1000 ? 'bg-amber-500' : 'bg-red-500'}`} />;
   };
+
+  const formatTime = (isoString?: string) => isoString ? new Date(isoString).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '---';
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Registro Timbrature</h2>
-          <p className="text-sm text-slate-500">Log cronologico con verifica prossimità GPS al cantiere.</p>
+          <p className="text-sm text-slate-500">Log cronologico con verifica prossimità GPS.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-          <Button onClick={exportToCSV} variant="secondary" className="bg-white border border-slate-200">
-             <FileDown size={18} /> Esporta CSV
-          </Button>
+          {canEdit && (
+            <Button 
+              onClick={() => setShowCostAnalysis(!showCostAnalysis)} 
+              variant={showCostAnalysis ? "primary" : "secondary"}
+              className="border border-slate-200"
+            >
+              <Calculator size={18} /> {showCostAnalysis ? "Nascondi Analisi Costi" : "Analisi Costi"}
+            </Button>
+          )}
 
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -160,31 +148,27 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
             />
           </div>
           
-          <div className="relative flex-1 sm:w-48">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
-              type="date" 
-              value={filterDate}
-              onChange={e => setFilterDate(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            />
-          </div>
-
-          {(searchTerm || filterDate) && (
-            <button 
-              onClick={clearFilters}
-              className="p-2 text-slate-400 hover:text-red-500 bg-white border border-slate-200 rounded-lg transition-colors flex items-center justify-center"
-              title="Azzera filtri"
-            >
-              <X size={18} />
-            </button>
-          )}
+          <input 
+            type="date" 
+            value={filterDate}
+            onChange={e => setFilterDate(e.target.value)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
         </div>
       </div>
+
+      {showCostAnalysis && !company?.costParameters && (
+        <Card className="p-4 bg-amber-50 border-amber-200 text-amber-800 text-sm flex items-center gap-3">
+          <Info size={18} />
+          <span>Configura i <strong>Parametri Costo</strong> nelle Opzioni per sbloccare l'analisi dei costi reali del lavoro.</span>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4">
         {filteredAttendance.map(record => {
           const report = getLinkedReport(record);
+          const hours = calculateHours(record.startTime, record.endTime);
+          const analysis = costAnalysis ? costAnalysis[record.id] : null;
           
           return (
             <Card key={record.id} className="p-4 bg-white hover:border-blue-200 transition-all border-l-4 border-l-blue-600">
@@ -195,10 +179,25 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
                     {new Date(record.startTime).toLocaleDateString('it-IT')}
                   </div>
                   <h3 className="font-bold text-slate-800 text-lg">{record.userName}</h3>
-                  <p className="text-sm text-slate-500 font-medium truncate">
-                    {record.siteName}
-                  </p>
+                  <p className="text-sm text-slate-500 font-medium truncate">{record.siteName}</p>
                   
+                  <div className="mt-3 flex gap-4 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    <div>Ore: <span className="text-slate-800">{hours.toFixed(2)}h</span></div>
+                  </div>
+
+                  {showCostAnalysis && analysis && (
+                    <div className="mt-4 p-2 bg-blue-50 rounded border border-blue-100 animate-in fade-in duration-300">
+                      <div className="flex justify-between text-[10px] text-blue-600 font-bold uppercase mb-1">
+                        <span>Costo Orario Reale</span>
+                        <span>€ {analysis.realHourlyRate.toFixed(2)}/h</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-800 font-bold">
+                        <span>Costo Totale Commessa</span>
+                        <span>€ {analysis.totalRealCost.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {canEdit && (
                     <button 
                       onClick={() => confirm("Eliminare questa timbratura?") && onRemoveRecord(record.id)}
@@ -210,43 +209,28 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* IN */}
-                  <div className="space-y-1 p-3 bg-slate-50 rounded-lg border border-slate-100 relative group">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Clock-In</span>
+                  <div className="space-y-1 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                      <span>Clock-In</span>
                       {renderGpsIndicator(record.startCoords, record.siteId)}
                     </div>
                     <div className="text-lg font-bold text-slate-800">{formatTime(record.startTime)}</div>
-                    <div className="flex justify-between items-center text-[10px] mt-1">
-                      <span className="text-slate-400 font-mono truncate">{formatCoords(record.startCoords)}</span>
-                      <span className="font-bold text-blue-600">Dist: {formatDistance(record.startCoords, record.siteId)}</span>
-                    </div>
                   </div>
 
-                  {/* OUT */}
-                  <div className={`space-y-1 p-3 rounded-lg border relative ${record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Clock-Out</span>
+                  <div className={`space-y-1 p-3 rounded-lg border ${record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100'}`}>
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                      <span>Clock-Out</span>
                       {renderGpsIndicator(record.endCoords, record.siteId)}
                     </div>
                     <div className="text-lg font-bold text-slate-800">{formatTime(record.endTime)}</div>
-                    <div className="flex justify-between items-center text-[10px] mt-1">
-                      <span className="text-slate-400 font-mono truncate">{formatCoords(record.endCoords)}</span>
-                      <span className="font-bold text-blue-600">Dist: {formatDistance(record.endCoords, record.siteId)}</span>
-                    </div>
                   </div>
 
-                  {/* RAPPORTINO */}
-                  <div className={`space-y-1 p-3 rounded-lg border relative ${report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Rapportino</span>
+                  <div className={`space-y-1 p-3 rounded-lg border ${report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                      <span>Rapportino</span>
                       {renderGpsIndicator(report?.coords, record.siteId)}
                     </div>
                     <div className="text-lg font-bold text-slate-800">{report ? formatTime(report.timestamp) : '---'}</div>
-                    <div className="flex justify-between items-center text-[10px] mt-1">
-                      <span className="text-slate-400 font-mono truncate">{report ? formatCoords(report.coords) : 'N/D'}</span>
-                      <span className="font-bold text-blue-600">Dist: {formatDistance(report?.coords, record.siteId)}</span>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -254,18 +238,6 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({ currentUser, attendance, 
           );
         })}
       </div>
-
-      {filteredAttendance.length === 0 && (
-        <div className="py-24 text-center bg-white rounded-2xl border border-dashed border-slate-200">
-          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-            <Search size={32} />
-          </div>
-          <h3 className="text-lg font-bold text-slate-800">Nessuna timbratura trovata</h3>
-          <p className="text-slate-500 max-w-xs mx-auto mt-1">
-            Modifica i filtri di ricerca o la data per visualizzare altri record.
-          </p>
-        </div>
-      )}
     </div>
   );
 };

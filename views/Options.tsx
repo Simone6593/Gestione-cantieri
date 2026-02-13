@@ -1,14 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
-import { User, Company, UserRole } from '../types';
+import { User, Company, UserRole, CostParameters } from '../types';
 import { auth, db } from '../firebase';
 // @ts-ignore - Bypass type resolution error in specific environment
 import { updatePassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { 
   Lock, User as UserIcon, Building, ShieldCheck, CheckCircle2, 
-  AlertCircle, Building2, Palette, Camera, Save, Hash
+  AlertCircle, Building2, Palette, Camera, Save, Hash, Calculator, Percent
 } from 'lucide-react';
 
 interface OptionsProps {
@@ -18,7 +18,7 @@ interface OptionsProps {
 }
 
 const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => {
-  const [activeTab, setActiveTab] = useState<'security' | 'profile' | 'company'>('security');
+  const [activeTab, setActiveTab] = useState<'security' | 'profile' | 'company' | 'costs'>('security');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
@@ -26,19 +26,28 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
   const [errorMessage, setErrorMessage] = useState('');
 
   const [companyEdit, setCompanyEdit] = useState<Company>({ ...company });
+  const [costParams, setCostParams] = useState<CostParameters>(company.costParameters || {
+    inpsRate: 30.00,
+    inailRate: 3.50,
+    cassaEdileRate: 10.50,
+    tfrDivisor: 13.5
+  });
+
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = user.role === UserRole.ADMIN;
 
   useEffect(() => {
-    if (activeTab === 'company' && user.aziendaId) {
+    if ((activeTab === 'company' || activeTab === 'costs') && user.aziendaId) {
       const fetchCompanyData = async () => {
         try {
           const docRef = doc(db, 'aziende', user.aziendaId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            setCompanyEdit({ ...docSnap.data() as Company, id: docSnap.id });
+            const data = docSnap.data() as Company;
+            setCompanyEdit({ ...data, id: docSnap.id });
+            if (data.costParameters) setCostParams(data.costParameters);
           }
         } catch (error) {
           console.error("Errore recupero dati azienda:", error);
@@ -73,7 +82,7 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
       setStatus('error');
       setErrorMessage(error.message || "Errore sconosciuto.");
       if (error.code === 'auth/requires-recent-login') {
-        alert("Per motivi di sicurezza, devi effettuare nuovamente il login prima di cambiare la password.");
+        alert("Effettua nuovamente il login prima di cambiare la password.");
       }
     } finally {
       setIsUpdating(false);
@@ -92,8 +101,8 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
   const handleSaveCompany = async () => {
     setIsSavingCompany(true);
     try {
-      await onUpdateCompany(companyEdit);
-      alert("Dati azienda salvati correttamente!");
+      await onUpdateCompany({ ...companyEdit, costParameters: costParams });
+      alert("Dati salvati correttamente!");
     } catch (error: any) {
       alert("Errore durante il salvataggio: " + error.message);
     } finally {
@@ -114,17 +123,81 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
           onClick={() => setActiveTab('profile')} 
           className={`px-4 py-2 font-bold transition-all ${activeTab === 'profile' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
         >
-          Mio Profilo
+          Profilo
         </button>
         {isAdmin && (
-          <button 
-            onClick={() => setActiveTab('company')} 
-            className={`px-4 py-2 font-bold transition-all ${activeTab === 'company' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            Azienda
-          </button>
+          <>
+            <button 
+              onClick={() => setActiveTab('company')} 
+              className={`px-4 py-2 font-bold transition-all ${activeTab === 'company' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Azienda
+            </button>
+            <button 
+              onClick={() => setActiveTab('costs')} 
+              className={`px-4 py-2 font-bold transition-all ${activeTab === 'costs' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Parametri Costo
+            </button>
+          </>
         )}
       </div>
+
+      {activeTab === 'costs' && isAdmin && (
+        <Card className="p-8 shadow-sm animate-in fade-in duration-300">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <Calculator size={20} className="text-blue-600" />
+              <h3 className="text-xl font-bold text-slate-800">Parametri Costo Dipendenti</h3>
+            </div>
+            <Button onClick={handleSaveCompany} disabled={isSavingCompany}>
+              <Save size={18}/> {isSavingCompany ? "Salvataggio..." : "Salva Parametri"}
+            </Button>
+          </div>
+
+          <p className="text-sm text-slate-500 mb-8">
+            Coefficienti per il calcolo del costo reale del lavoro basato sui dati LUL e timbrature.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
+            <Input 
+              label="Aliquota INPS Aziendale (%)" 
+              type="number" 
+              value={costParams.inpsRate.toString()} 
+              onChange={e => setCostParams({...costParams, inpsRate: Number(e.target.value)})}
+              suffix={<Percent size={14} className="text-slate-400" />}
+            />
+            <Input 
+              label="Coefficiente INAIL (%)" 
+              type="number" 
+              value={costParams.inailRate.toString()} 
+              onChange={e => setCostParams({...costParams, inailRate: Number(e.target.value)})}
+              suffix={<Percent size={14} className="text-slate-400" />}
+            />
+            <Input 
+              label="Contributi Cassa Edile (%)" 
+              type="number" 
+              value={costParams.cassaEdileRate.toString()} 
+              onChange={e => setCostParams({...costParams, cassaEdileRate: Number(e.target.value)})}
+              suffix={<Percent size={14} className="text-slate-400" />}
+            />
+            <Input 
+              label="Divisore TFR" 
+              type="number" 
+              value={costParams.tfrDivisor.toString()} 
+              onChange={e => setCostParams({...costParams, tfrDivisor: Number(e.target.value)})}
+              placeholder="es. 13.5"
+            />
+          </div>
+
+          <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100 flex gap-3">
+            <AlertCircle size={18} className="text-blue-500 shrink-0" />
+            <div className="text-[11px] text-blue-700 leading-relaxed">
+              <strong>Formula di calcolo:</strong> Il costo totale mensile viene calcolato sommando Competenze Lorde, Costo Previdenziale (INPS), Assicurativo (INAIL), Cassa Edile extra e Accantonamento TFR. Il costo orario reale è diviso per le ore effettive registrate.
+            </div>
+          </div>
+        </Card>
+      )}
 
       {activeTab === 'security' && (
         <Card className="p-8 shadow-sm animate-in fade-in duration-300">
@@ -132,53 +205,11 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
             <Lock size={20} className="text-blue-600" />
             <h3 className="text-xl font-bold text-slate-800">Cambio Password</h3>
           </div>
-
-          {status === 'success' && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700">
-              <CheckCircle2 size={20} />
-              <span className="text-sm font-semibold">Password aggiornata con successo!</span>
-            </div>
-          )}
-
-          {status === 'error' && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
-              <AlertCircle size={20} />
-              <span className="text-sm font-semibold">{errorMessage}</span>
-            </div>
-          )}
-
           <form onSubmit={handleUpdatePass} className="space-y-4 max-w-sm">
-            <Input 
-              label="Nuova Password" 
-              type="password" 
-              value={newPassword} 
-              onChange={e => setNewPassword(e.target.value)} 
-              placeholder="Minimo 6 caratteri"
-              required 
-            />
-            <Input 
-              label="Conferma Nuova Password" 
-              type="password" 
-              value={confirmPassword} 
-              onChange={e => setConfirmPassword(e.target.value)} 
-              placeholder="Ripeti la password"
-              required 
-            />
-            <div className="pt-2">
-              <Button type="submit" className="w-full h-11" disabled={isUpdating}>
-                {isUpdating ? "Aggiornamento..." : "Salva Nuova Password"}
-              </Button>
-            </div>
+            <Input label="Nuova Password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            <Input label="Conferma Nuova Password" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+            <Button type="submit" className="w-full" disabled={isUpdating}>Aggiorna Password</Button>
           </form>
-
-          <div className="mt-8 p-4 bg-slate-50 rounded-xl border border-slate-100">
-            <div className="flex gap-3">
-              <ShieldCheck size={18} className="text-blue-500 shrink-0" />
-              <div className="text-[11px] text-slate-500 leading-relaxed">
-                <strong>Sicurezza:</strong> Ti consigliamo di cambiare la password ogni 3-6 mesi per proteggere il tuo account.
-              </div>
-            </div>
-          </div>
         </Card>
       )}
 
@@ -190,30 +221,17 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
             </div>
             <div>
               <h2 className="text-2xl font-bold text-slate-800">{user.firstName} {user.lastName}</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold uppercase tracking-wider border border-blue-100">
-                  {user.role}
-                </span>
-                <span className="text-xs text-slate-400 font-medium">{user.email}</span>
-              </div>
+              <p className="text-sm text-slate-400">{user.email}</p>
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-50">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Email Personale</p>
-              <div className="text-slate-700 font-semibold">{user.email}</div>
+             <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Ruolo</p>
+              <div className="text-slate-700 font-semibold">{user.role}</div>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Telefono</p>
-              <div className="text-slate-700 font-semibold">{user.phone || 'Non specificato'}</div>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Azienda di appartenenza</p>
-              <div className="flex items-center gap-2 text-slate-700 font-semibold">
-                <Building size={16} className="text-slate-400" />
-                {company.name}
-              </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Azienda</p>
+              <div className="text-slate-700 font-semibold">{company.name}</div>
             </div>
           </div>
         </Card>
@@ -226,62 +244,33 @@ const Options: React.FC<OptionsProps> = ({ user, company, onUpdateCompany }) => 
               <Building2 className="text-blue-600" /> Profilo Aziendale
             </h3>
             <Button onClick={handleSaveCompany} disabled={isSavingCompany}>
-              <Save size={18}/> {isSavingCompany ? "Salvataggio..." : "Salva Modifiche"}
+              <Save size={18}/> Salva Modifiche
             </Button>
           </div>
           
           <div className="flex flex-col md:flex-row gap-8">
             <div className="flex flex-col items-center gap-4">
-              <div 
-                onClick={() => logoInputRef.current?.click()} 
-                className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors group relative"
-              >
+              <div onClick={() => logoInputRef.current?.click()} className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden cursor-pointer bg-slate-50 group relative">
                 {companyEdit.logoUrl ? (
-                  <>
-                    <img src={companyEdit.logoUrl} className="w-full h-full object-contain p-2" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">Cambia Logo</div>
-                  </>
+                  <img src={companyEdit.logoUrl} className="w-full h-full object-contain p-2" />
                 ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Camera className="text-slate-300" />
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Carica Logo</span>
-                  </div>
+                  <Camera className="text-slate-300" />
                 )}
               </div>
               <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoChange} />
-              
-              <div className="w-full">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-                  <Palette size={12} /> Colore Brand
-                </label>
-                <input 
-                  type="color" 
-                  value={companyEdit.primaryColor} 
-                  onChange={e => setCompanyEdit({...companyEdit, primaryColor: e.target.value})} 
-                  className="w-full h-10 rounded-lg cursor-pointer border-0 p-0 overflow-hidden" 
-                />
-              </div>
+              <input type="color" value={companyEdit.primaryColor} onChange={e => setCompanyEdit({...companyEdit, primaryColor: e.target.value})} className="w-full h-10 rounded-lg cursor-pointer" />
             </div>
 
             <div className="flex-1 space-y-5">
               <Input label="Ragione Sociale" value={companyEdit.name} onChange={e => setCompanyEdit({...companyEdit, name: e.target.value})} />
-              <Input 
-                label="Partita IVA" 
-                value={companyEdit.vatNumber || ''} 
-                onChange={e => setCompanyEdit({...companyEdit, vatNumber: e.target.value})} 
-                suffix={<Hash size={16} className="text-slate-400" />}
-              />
+              <Input label="Partita IVA" value={companyEdit.vatNumber || ''} onChange={e => setCompanyEdit({...companyEdit, vatNumber: e.target.value})} />
               <Input label="Sede Legale" value={companyEdit.legalOffice} onChange={e => setCompanyEdit({...companyEdit, legalOffice: e.target.value})} />
               <Input label="Email Aziendale" type="email" value={companyEdit.email} onChange={e => setCompanyEdit({...companyEdit, email: e.target.value})} />
-              <Input label="Telefono Assistenza" value={companyEdit.phone} onChange={e => setCompanyEdit({...companyEdit, phone: e.target.value})} />
+              <Input label="Telefono" value={companyEdit.phone} onChange={e => setCompanyEdit({...companyEdit, phone: e.target.value})} />
             </div>
           </div>
         </Card>
       )}
-
-      <div className="text-center pb-8">
-        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">CostruGest App v1.2.0</p>
-      </div>
     </div>
   );
 };

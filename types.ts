@@ -5,15 +5,23 @@ export enum UserRole {
   WORKER = 'Operaio'
 }
 
+export interface CostParameters {
+  inpsRate: number;        // Aliquota INPS Aziendale %
+  inailRate: number;       // Coefficiente INAIL %
+  cassaEdileRate: number;  // Contributi Cassa Edile %
+  tfrDivisor: number;      // Divisore TFR (solitamente 13.5)
+}
+
 export interface Company {
   id?: string;
   name: string;
-  vatNumber?: string; // Partita IVA
+  vatNumber?: string;
   legalOffice: string;
   phone: string;
   email: string;
   logoUrl?: string;
   primaryColor: string;
+  costParameters?: CostParameters; // Nuovi parametri per analisi costi
 }
 
 export interface User {
@@ -33,13 +41,17 @@ export interface PaySlip {
   aziendaId: string;
   userId: string;
   userName: string;
-  month: string; // Formato "MM/YYYY"
-  fileData?: string; // Stringa Base64 del PDF
-  fileUrl?: string; // Mantenuto per compatibilità legacy o file esterni
+  month: string;
+  fileData?: string;
+  fileUrl?: string;
   fileName: string;
   uploadDate: string;
   acceptedDate?: string | null;
   status: 'In attesa' | 'Accettata';
+  // Dati estratti per calcolo costi
+  competenzeLorde?: number;
+  imponibileInps?: number;
+  imponibileInail?: number;
 }
 
 export interface Site {
@@ -81,7 +93,7 @@ export interface DailyReport {
   date: string;
   description: string;
   notes: string;
-  photoUrls?: string[]; // Supporto multi-foto
+  photoUrls?: string[];
   timestamp: string;
   coords?: { lat: number; lng: number };
 }
