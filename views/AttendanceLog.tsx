@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company } from '../types';
-import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon } from 'lucide-react';
+import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon, AlertTriangle } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -25,6 +25,22 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
   const [editData, setEditData] = useState<{ startTime: string, endTime: string }>({ startTime: '', endTime: '' });
   
   const canEdit = currentUser.role === UserRole.ADMIN;
+
+  // Helper per calcolare la distanza in metri tra due punti (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371e3; // Raggio della terra in metri
+    const phi1 = lat1 * Math.PI/180;
+    const phi2 = lat2 * Math.PI/180;
+    const deltaPhi = (lat2-lat1) * Math.PI/180;
+    const deltaLambda = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) +
+              Math.cos(phi1) * Math.cos(phi2) *
+              Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // Distanza in metri
+  };
 
   const filteredAttendance = attendance
     .filter(a => {
@@ -54,38 +70,55 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
 
   const costAnalysis = useMemo(() => {
     const analysisMap: Record<string, { totalHours: number, realHourlyRate: number, totalRealCost: number }> = {};
-
     filteredAttendance.forEach(record => {
       if (!record.endTime) return;
       const hours = calculateHours(record.startTime, record.endTime);
       const recordDate = new Date(record.startTime);
-      const recordMonth = recordDate.getMonth() + 1;
-      const recordYear = recordDate.getFullYear();
-      const monthKey = `${recordMonth.toString().padStart(2, '0')}/${recordYear}`;
-      
+      const monthKey = `${(recordDate.getMonth() + 1).toString().padStart(2, '0')}/${recordDate.getFullYear()}`;
       const ps = paySlips.find(p => p.userId === record.userId && p.month === monthKey);
-      
       if (ps && ps.costoOrarioReale) {
-        analysisMap[record.id] = {
-          totalHours: hours,
-          realHourlyRate: ps.costoOrarioReale,
-          totalRealCost: hours * ps.costoOrarioReale
-        };
+        analysisMap[record.id] = { totalHours: hours, realHourlyRate: ps.costoOrarioReale, totalRealCost: hours * ps.costoOrarioReale };
       }
     });
-
     return analysisMap;
   }, [filteredAttendance, paySlips]);
 
-  const renderGpsIndicator = (label: string, coords?: { lat: number, lng: number }) => {
-    if (!coords) return (
-      <div className="flex items-center gap-1 text-[8px] font-bold text-slate-300 uppercase">
-        <MapPin size={10} /> {label} No-GPS
-      </div>
-    );
+  const renderGpsInfo = (label: string, recordCoords?: { lat: number, lng: number }, siteCoords?: { latitude: number, longitude: number }) => {
+    if (!recordCoords) {
+      return (
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-100 text-[8px] font-bold text-slate-400 uppercase border border-slate-200">
+          <MapPin size={10} /> {label} NO-GPS
+        </div>
+      );
+    }
+
+    let distanceText = "Pos. OK";
+    let statusClass = "bg-green-50 text-green-600 border-green-200";
+    let Icon = CheckCircle2;
+
+    if (siteCoords) {
+      const dist = calculateDistance(recordCoords.lat, recordCoords.lng, siteCoords.latitude, siteCoords.longitude);
+      if (dist < 1000) {
+        distanceText = `${Math.round(dist)}m dal cantiere`;
+      } else {
+        distanceText = `${(dist/1000).toFixed(1)}km dal cantiere`;
+      }
+
+      if (dist > 1000) {
+        statusClass = "bg-red-50 text-red-600 border-red-200";
+        Icon = AlertTriangle;
+      } else if (dist > 250) {
+        statusClass = "bg-amber-50 text-amber-600 border-amber-200";
+        Icon = Info;
+      }
+    }
+
     return (
-      <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 uppercase" title={`Lat: ${coords.lat}, Lng: ${coords.lng}`}>
-        <CheckCircle2 size={10} /> {label} GPS OK
+      <div 
+        className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${statusClass}`}
+        title={`Coordinate: ${recordCoords.lat.toFixed(6)}, ${recordCoords.lng.toFixed(6)}`}
+      >
+        <Icon size={10} /> {label}: {distanceText}
       </div>
     );
   };
@@ -108,18 +141,12 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
         endTime: editData.endTime ? new Date(editData.endTime).toISOString() : undefined,
       };
 
-      if (!originalRecord.originalStartTime) {
-        updates.originalStartTime = originalRecord.startTime;
-      }
-      if (originalRecord.endTime && !originalRecord.originalEndTime) {
-        updates.originalEndTime = originalRecord.endTime;
-      }
+      if (!originalRecord.originalStartTime) updates.originalStartTime = originalRecord.startTime;
+      if (originalRecord.endTime && !originalRecord.originalEndTime) updates.originalEndTime = originalRecord.endTime;
 
       await onUpdateRecord(editingId, updates);
       setEditingId(null);
-    } catch (e) {
-      alert("Errore durante l'aggiornamento della timbratura.");
-    }
+    } catch (e) { alert("Errore durante la modifica."); }
   };
 
   return (
@@ -127,36 +154,30 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Registro Timbrature</h2>
-          <p className="text-sm text-slate-500">Log cronologico con verifica GPS e analisi costi.</p>
+          <p className="text-sm text-slate-500">Log cronologico con verifica distanza GPS dal cantiere assegnato.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           {canEdit && (
-            <Button 
-              onClick={() => setShowCostAnalysis(!showCostAnalysis)} 
-              variant={showCostAnalysis ? "primary" : "secondary"}
-              className="border border-slate-200"
-            >
+            <Button onClick={() => setShowCostAnalysis(!showCostAnalysis)} variant={showCostAnalysis ? "primary" : "secondary"} className="h-10">
               <Calculator size={18} /> {showCostAnalysis ? "Nascondi Costi" : "Analisi Costi"}
             </Button>
           )}
-
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="Cerca operaio o cantiere..."
-              value={searchTerm}
+              placeholder="Cerca operaio o cantiere..." 
+              value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          
           <input 
             type="date" 
-            value={filterDate}
+            value={filterDate} 
             onChange={e => setFilterDate(e.target.value)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -165,51 +186,43 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
         {filteredAttendance.map(record => {
           const report = getLinkedReport(record);
           const hours = calculateHours(record.startTime, record.endTime);
-          const analysis = costAnalysis ? costAnalysis[record.id] : null;
+          const analysis = costAnalysis[record.id];
           const isEditing = editingId === record.id;
-          const hasBeenEdited = !!record.originalStartTime;
+          const hasManualMod = !!record.originalStartTime;
+          const site = sites.find(s => s.id === record.siteId);
           
           return (
-            <Card key={record.id} className={`p-4 bg-white hover:border-blue-200 transition-all border-l-4 ${isEditing ? 'border-l-amber-500 bg-amber-50/30' : 'border-l-blue-600'}`}>
+            <Card key={record.id} className={`p-4 border-l-4 transition-all hover:shadow-md ${isEditing ? 'border-amber-500 bg-amber-50/50' : 'border-blue-600 bg-white'}`}>
               <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-1/4">
-                  <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase mb-1">
-                    <Calendar size={14} />
-                    {new Date(record.startTime).toLocaleDateString('it-IT')}
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 uppercase mb-2 tracking-widest">
+                    <Calendar size={12}/> {new Date(record.startTime).toLocaleDateString('it-IT')}
                   </div>
                   <h3 className="font-bold text-slate-800 text-lg">{record.userName}</h3>
-                  <p className="text-sm text-slate-500 font-medium truncate">{record.siteName}</p>
+                  <p className="text-xs font-medium text-slate-500 truncate mb-3">{record.siteName}</p>
                   
-                  <div className="mt-3 flex flex-col gap-1">
-                    <div className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                      Ore: <span className="text-slate-800">{hours.toFixed(2)}h</span>
-                      {hasBeenEdited && (
-                        <span title="Modificato manualmente">
-                          <History size={12} className="text-amber-500" />
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-sm font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">{hours.toFixed(2)}h totali</span>
+                    {hasManualMod && (
+                      <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 border border-amber-200" title="Timbratura modificata manualmente da un amministratore">
+                        <History size={10}/> MOD
+                      </span>
+                    )}
                   </div>
 
                   {showCostAnalysis && analysis && (
-                    <div className="mt-4 p-2 bg-blue-50 rounded border border-blue-100 animate-in fade-in duration-300">
-                      <div className="flex justify-between text-[10px] text-blue-600 font-bold uppercase mb-1">
-                        <span>Costo Orario</span>
-                        <span>€ {analysis.realHourlyRate.toFixed(2)}/h</span>
-                      </div>
-                      <div className="flex justify-between text-[11px] text-slate-800 font-bold">
-                        <span>Costo Commessa</span>
-                        <span>€ {analysis.totalRealCost.toFixed(2)}</span>
-                      </div>
+                    <div className="p-3 bg-blue-600 text-white rounded-xl shadow-sm animate-in fade-in zoom-in duration-300">
+                      <div className="text-[10px] font-bold uppercase text-blue-100 mb-1">Costo Commessa</div>
+                      <div className="text-lg font-mono font-bold">€ {analysis.totalRealCost.toFixed(2)}</div>
                     </div>
                   )}
 
                   {canEdit && !isEditing && (
-                    <div className="mt-4 flex gap-3">
-                      <button onClick={() => startEditing(record)} className="text-[10px] text-blue-600 uppercase font-bold tracking-widest hover:underline flex items-center gap-1">
+                    <div className="mt-4 flex gap-4">
+                      <button onClick={() => startEditing(record)} className="flex items-center gap-1.5 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-800 transition-colors">
                         <Edit2 size={12} /> Modifica
                       </button>
-                      <button onClick={() => confirm("Eliminare?") && onRemoveRecord(record.id)} className="text-[10px] text-red-500 uppercase font-bold tracking-widest hover:underline flex items-center gap-1">
+                      <button onClick={() => confirm("Sei sicuro di voler eliminare definitivamente questa timbratura?") && onRemoveRecord(record.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-red-500 uppercase hover:text-red-700 transition-colors">
                         <Trash2 size={12} /> Elimina
                       </button>
                     </div>
@@ -217,54 +230,61 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : 'bg-slate-50 border-slate-100'}`}>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                      <span className="flex items-center gap-1">Inizio {hasBeenEdited && <span className="text-[8px] text-amber-600">(MOD)</span>}</span>
+                  {/* INIZIO */}
+                  <div className={`p-3 rounded-xl border flex flex-col justify-between ${isEditing ? 'bg-white border-amber-300 shadow-inner' : 'bg-slate-50 border-slate-100'}`}>
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Ingresso</span>
+                      {isEditing ? (
+                        <input type="datetime-local" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} className="w-full text-xs font-bold bg-transparent border-b border-amber-200 py-1 outline-none" />
+                      ) : (
+                        <div>
+                          <div className="text-xl font-bold text-slate-800">{formatTime(record.startTime)}</div>
+                          {record.originalStartTime && <div className="text-[9px] text-slate-400 font-mono italic mt-0.5">App: {formatTime(record.originalStartTime)}</div>}
+                        </div>
+                      )}
                     </div>
-                    {isEditing ? (
-                      <input type="datetime-local" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} className="w-full text-sm font-bold bg-transparent outline-none text-slate-800" />
-                    ) : (
-                      <div className="flex flex-col">
-                        <div className="text-lg font-bold text-slate-800">{formatTime(record.startTime)}</div>
-                        {record.originalStartTime && <div className="text-[9px] text-slate-400 font-mono italic">Orig: {formatTime(record.originalStartTime)}</div>}
-                      </div>
-                    )}
-                    <div className="pt-1 border-t border-slate-200/50 mt-1">
-                      {renderGpsIndicator("In", record.startCoords)}
-                    </div>
-                  </div>
-
-                  <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : (record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100')}`}>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                      <span className="flex items-center gap-1">Fine {hasBeenEdited && <span className="text-[8px] text-amber-600">(MOD)</span>}</span>
-                    </div>
-                    {isEditing ? (
-                      <input type="datetime-local" value={editData.endTime} onChange={e => setEditData({...editData, endTime: e.target.value})} className="w-full text-sm font-bold bg-transparent outline-none text-slate-800" />
-                    ) : (
-                      <div className="flex flex-col">
-                        <div className="text-lg font-bold text-slate-800">{formatTime(record.endTime)}</div>
-                        {record.originalEndTime && <div className="text-[9px] text-slate-400 font-mono italic">Orig: {formatTime(record.originalEndTime)}</div>}
-                      </div>
-                    )}
-                    <div className="pt-1 border-t border-slate-200/50 mt-1">
-                      {renderGpsIndicator("Out", record.endCoords)}
+                    <div className="mt-3">
+                      {renderGpsInfo("App", record.startCoords, site?.coords)}
                     </div>
                   </div>
 
-                  <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'flex items-center justify-center bg-amber-500 text-white' : (report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60')}`}>
+                  {/* FINE */}
+                  <div className={`p-3 rounded-xl border flex flex-col justify-between ${isEditing ? 'bg-white border-amber-300 shadow-inner' : (record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100 animate-pulse')}`}>
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Uscita</span>
+                      {isEditing ? (
+                        <input type="datetime-local" value={editData.endTime} onChange={e => setEditData({...editData, endTime: e.target.value})} className="w-full text-xs font-bold bg-transparent border-b border-amber-200 py-1 outline-none" />
+                      ) : (
+                        <div>
+                          <div className="text-xl font-bold text-slate-800">{formatTime(record.endTime)}</div>
+                          {record.originalEndTime && <div className="text-[9px] text-slate-400 font-mono italic mt-0.5">App: {formatTime(record.originalEndTime)}</div>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3">
+                      {renderGpsInfo("Out", record.endCoords, site?.coords)}
+                    </div>
+                  </div>
+
+                  {/* RAPPORTINO COLLEGATO */}
+                  <div className={`p-3 rounded-xl border flex flex-col justify-between ${isEditing ? 'bg-amber-200 border-amber-300' : (report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60')}`}>
                     {isEditing ? (
-                      <div className="flex gap-2 w-full">
-                        <button onClick={() => handleSaveEdit(record)} className="flex-1 bg-white text-amber-600 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 shadow-sm"><Save size={14} /> Salva</button>
-                        <button onClick={() => setEditingId(null)} className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-bold text-xs">Annulla</button>
+                      <div className="h-full flex flex-col gap-2 justify-center">
+                        <Button onClick={() => handleSaveEdit(record)} className="py-2 text-[11px] font-bold h-auto bg-amber-600 text-white shadow-md">
+                          <Save size={14}/> Salva
+                        </Button>
+                        <Button variant="ghost" onClick={() => setEditingId(null)} className="py-2 text-[11px] font-bold h-auto text-amber-700 bg-white/50">
+                          Annulla
+                        </Button>
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                          <span>Rapportino</span>
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Rapportino</span>
+                          <div className="text-xl font-bold text-slate-800">{report ? formatTime(report.timestamp) : 'Mancante'}</div>
                         </div>
-                        <div className="text-lg font-bold text-slate-800">{report ? formatTime(report.timestamp) : '---'}</div>
-                        <div className="pt-1 border-t border-blue-200/50 mt-1">
-                          {renderGpsIndicator("Rep", report?.coords)}
+                        <div className="mt-3">
+                          {renderGpsInfo("Rep", report?.coords, site?.coords)}
                         </div>
                       </>
                     )}
@@ -274,6 +294,13 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
             </Card>
           );
         })}
+        {filteredAttendance.length === 0 && (
+          <div className="py-20 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200">
+            <Clock size={48} className="mx-auto text-slate-200 mb-4" />
+            <h3 className="text-xl font-bold text-slate-400">Nessuna timbratura registrata</h3>
+            <p className="text-sm text-slate-400 mt-1">Regola i filtri o la ricerca per vedere altri risultati.</p>
+          </div>
+        )}
       </div>
     </div>
   );
