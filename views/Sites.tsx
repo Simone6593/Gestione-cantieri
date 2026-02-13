@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
-import { Site, User, UserRole, AttendanceRecord, PaySlip } from '../types';
-import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp, Layers, Navigation, Search, Loader2, Calculator, Info, TrendingUp } from 'lucide-react';
+import { Site, User, UserRole, AttendanceRecord, PaySlip, MaterialCost } from '../types';
+import { MapPin, Plus, Construction, Edit2, Trash2, Map as MapIcon, X, FileUp, Layers, Navigation, Search, Loader2, Calculator, Info, ShoppingCart, TrendingDown } from 'lucide-react';
 import maplibregl from 'maplibre-gl';
 
 interface SitesProps {
@@ -10,6 +10,7 @@ interface SitesProps {
   sites: Site[];
   attendance?: AttendanceRecord[];
   paySlips?: PaySlip[];
+  materialCosts?: MaterialCost[];
   onAddSite: (site: Partial<Site>) => void;
   onUpdateSite: (id: string, updates: Partial<Site>) => void;
   onRemoveSite: (id: string) => void;
@@ -101,12 +102,11 @@ const MapPickerModal: React.FC<{
   );
 };
 
-const Sites: React.FC<SitesProps> = ({ currentUser, sites, attendance = [], paySlips = [], onAddSite, onUpdateSite, onRemoveSite, showActive }) => {
+const Sites: React.FC<SitesProps> = ({ currentUser, sites, attendance = [], paySlips = [], materialCosts = [], onAddSite, onUpdateSite, onRemoveSite, showActive }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [showGlobalMap, setShowGlobalMap] = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const globalMapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -116,29 +116,37 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, attendance = [], payS
   const canEdit = currentUser.role === UserRole.ADMIN;
   const filteredSites = sites.filter(s => s.isActive === showActive);
 
-  // Calcolo costi per cantiere
+  // Calcolo costi per cantiere (Personale + Materiali)
   const siteCosts = useMemo(() => {
-    const costs: Record<string, { total: number, hours: number }> = {};
+    const costs: Record<string, { labor: number, materials: number, total: number, hours: number }> = {};
     sites.forEach(site => {
-      let total = 0;
+      let laborTotal = 0;
       let totalHours = 0;
-      const siteAttendance = attendance.filter(a => a.siteId === site.id && a.endTime);
       
+      // Calcolo costi personale
+      const siteAttendance = attendance.filter(a => a.siteId === site.id && a.endTime);
       siteAttendance.forEach(a => {
         const hours = (new Date(a.endTime!).getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60);
         const recordDate = new Date(a.startTime);
         const monthKey = `${(recordDate.getMonth() + 1).toString().padStart(2, '0')}/${recordDate.getFullYear()}`;
         const ps = paySlips.find(p => p.userId === a.userId && p.month === monthKey);
-        
-        if (ps && ps.costoOrarioReale) {
-          total += hours * ps.costoOrarioReale;
-        }
+        if (ps && ps.costoOrarioReale) laborTotal += hours * ps.costoOrarioReale;
         totalHours += hours;
       });
-      costs[site.id] = { total, hours: totalHours };
+
+      // Calcolo costi materiali (con supporto spesa condivisa)
+      const siteMaterials = materialCosts.filter(m => m.siteIds.includes(site.id));
+      const materialTotal = siteMaterials.reduce((sum, m) => sum + (m.taxableAmount / m.siteIds.length), 0);
+
+      costs[site.id] = { 
+        labor: laborTotal, 
+        materials: materialTotal, 
+        total: laborTotal + materialTotal, 
+        hours: totalHours 
+      };
     });
     return costs;
-  }, [sites, attendance, paySlips]);
+  }, [sites, attendance, paySlips, materialCosts]);
 
   useEffect(() => {
     if (showGlobalMap && globalMapRef.current && !mapInstanceRef.current) {
@@ -207,7 +215,7 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, attendance = [], payS
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {filteredSites.map(site => {
-          const stats = siteCosts[site.id] || { total: 0, hours: 0 };
+          const stats = siteCosts[site.id] || { labor: 0, materials: 0, total: 0, hours: 0 };
           const budgetUsedPercent = site.budget > 0 ? (stats.total / site.budget) * 100 : 0;
 
           return (
@@ -215,28 +223,45 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, attendance = [], payS
               <div className="flex justify-between items-start">
                 <div className="flex gap-4 min-w-0">
                   <div className="w-14 h-14 bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100 transition-all"><Construction size={28} /></div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <h3 className="text-xl font-bold text-slate-800 truncate">{site.client}</h3>
                     <div className="flex items-center gap-1.5 text-slate-500 text-sm mt-1"><MapPin size={14} className="text-blue-400" /><span className="truncate">{site.address}</span></div>
                     
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 mt-5 pt-5 border-t border-slate-50">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-slate-50">
                       <div className="space-y-1">
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Giornate</p>
-                         <p className="text-sm font-bold text-slate-700">{site.actualDays} <span className="text-xs text-slate-400 font-normal">/ {site.estimatedDays}gg</span></p>
-                      </div>
-                      <div className="space-y-1">
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Budget</p>
+                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Budget Totale</p>
                          <p className="text-sm font-bold text-slate-700">€ {site.budget.toLocaleString()}</p>
                       </div>
                       <div className="space-y-1">
-                         <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1"><Calculator size={10}/> Costo Pers.</p>
-                         <p className="text-sm font-bold text-blue-600">€ {stats.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                         <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-1"><Calculator size={10}/> Spesa Tot.</p>
+                         <p className="text-sm font-bold text-blue-600">€ {stats.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="space-y-1">
+                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ore Reg.</p>
+                         <p className="text-sm font-bold text-slate-700">{stats.hours.toFixed(1)}h</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <Calculator size={14} className="text-blue-500" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Costo Personale</span>
+                          <span className="text-xs font-bold text-slate-700">€ {stats.labor.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart size={14} className="text-amber-500" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Costo Materiali</span>
+                          <span className="text-xs font-bold text-slate-700">€ {stats.materials.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
                 {canEdit && (
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
                     <button onClick={() => handleEdit(site)} className="p-2 text-slate-300 hover:text-blue-600 rounded-xl"><Edit2 size={18} /></button>
                     <button onClick={() => onRemoveSite(site.id)} className="p-2 text-slate-300 hover:text-red-600 rounded-xl"><Trash2 size={18} /></button>
                   </div>
@@ -246,15 +271,17 @@ const Sites: React.FC<SitesProps> = ({ currentUser, sites, attendance = [], payS
               <div className="mt-6 space-y-3">
                  <div className="flex justify-between items-end">
                    <div className="flex flex-col">
-                     <span className="text-[10px] font-bold text-slate-400 uppercase">Assorbimento Budget (%)</span>
-                     <span className={`text-lg font-bold ${budgetUsedPercent > 90 ? 'text-red-600' : 'text-blue-600'}`}>{budgetUsedPercent.toFixed(1)}%</span>
+                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Assorbimento Budget</span>
+                     <span className={`text-xl font-bold ${budgetUsedPercent > 90 ? 'text-red-600' : 'text-blue-600'}`}>{budgetUsedPercent.toFixed(1)}%</span>
                    </div>
                    <div className="flex flex-col text-right">
-                     <span className="text-[10px] font-bold text-slate-400 uppercase">Ore Totali Registrate</span>
-                     <span className="text-lg font-bold text-slate-800">{stats.hours.toFixed(1)}h</span>
+                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Budget Residuo</span>
+                     <span className={`text-xl font-bold ${site.budget - stats.total < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        € {(site.budget - stats.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                     </span>
                    </div>
                  </div>
-                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                 <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden shadow-inner">
                     <div 
                       className={`h-full rounded-full transition-all duration-1000 ${budgetUsedPercent > 100 ? 'bg-red-500' : budgetUsedPercent > 80 ? 'bg-amber-500' : 'bg-blue-600'}`} 
                       style={{ width: `${Math.min(100, budgetUsedPercent)}%` }}

@@ -48,12 +48,11 @@ export interface PaySlip {
   uploadDate: string;
   acceptedDate?: string | null;
   status: 'In attesa' | 'Accettata';
-  // Dati estratti per calcolo costi
   competenzeLorde?: number;
   imponibileInps?: number;
   imponibileInail?: number;
-  oreRetribuite?: number; // Ore indicate nel cedolino
-  costoOrarioReale?: number; // Calcolato al momento del caricamento
+  oreRetribuite?: number; 
+  costoOrarioReale?: number; 
 }
 
 export interface Site {
@@ -69,6 +68,18 @@ export interface Site {
   coords?: { latitude: number; longitude: number };
 }
 
+export interface MaterialCost {
+  id: string;
+  aziendaId: string;
+  supplier: string;
+  invoiceNumber: string;
+  date: string;
+  siteIds: string[]; // Supporto scelta multipla
+  siteNames: string[];
+  taxableAmount: number;
+  timestamp: string;
+}
+
 export interface AttendanceRecord {
   id: string;
   aziendaId: string;
@@ -78,8 +89,8 @@ export interface AttendanceRecord {
   siteName: string;
   startTime: string;
   endTime?: string;
-  originalStartTime?: string; // Orario originale pre-modifica manuale
-  originalEndTime?: string;   // Orario originale pre-modifica manuale
+  originalStartTime?: string; 
+  originalEndTime?: string;   
   startCoords?: { lat: number; lng: number };
   endCoords?: { lat: number; lng: number };
   reportSubmitted: boolean;

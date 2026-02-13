@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ClipboardCheck
+  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -23,8 +23,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
-    // Rapportino rimosso dal menu come richiesto
     { id: 'attendance-log', label: 'Registro Timbrature', icon: ListFilter, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
+    { id: 'material-costs', label: 'Costi Materiali', icon: ShoppingCart, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'worker-pay-slips', label: 'Le mie Buste Paga', icon: FileText, roles: [UserRole.WORKER] },
     { id: 'admin-pay-slips', label: 'Gestione Buste Paga', icon: FileText, roles: [UserRole.ADMIN] },
     { id: 'resources', label: 'Gestione Dipendenti', icon: Users, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
@@ -40,6 +40,7 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   const getGuide = () => {
     const guides: Record<string, {title: string, steps: string[]}> = {
       attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "Al termine, clicca 'Fine'. Se sei l'ultimo, l'app ti chiederà il rapportino."] },
+      'material-costs': { title: "Costi Materiali", steps: ["Inserisci i dati della fattura o scontrino.", "Puoi selezionare più cantieri se la spesa è condivisa.", "Scarica l'Excel a fine mese per la contabilità."] },
       schedule: { title: "Programma Lavori", steps: ["Visualizza dove sei assegnato oggi.", "I supervisori possono spostare gli operai tra i cantieri."] },
     };
     return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Le funzionalità dipendono dal tuo ruolo aziendale."] };
