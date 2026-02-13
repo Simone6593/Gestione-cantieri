@@ -79,7 +79,11 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
 
   const renderGpsIndicator = (workerCoords?: { lat: number, lng: number }) => {
     if (!workerCoords) return <div className="w-3 h-3 rounded-full bg-slate-200" title="GPS non disponibile" />;
-    return <CheckCircle2 size={12} className="text-green-500" title="GPS OK" />;
+    return (
+      <span title="GPS OK">
+        <CheckCircle2 size={12} className="text-green-500" />
+      </span>
+    );
   };
 
   const formatTime = (isoString?: string) => isoString ? new Date(isoString).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '---';
@@ -176,7 +180,11 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                   <div className="mt-3 flex flex-col gap-1">
                     <div className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
                       Ore: <span className="text-slate-800">{hours.toFixed(2)}h</span>
-                      {hasBeenEdited && <History size={12} className="text-amber-500" title="Modificato manualmente" />}
+                      {hasBeenEdited && (
+                        <span title="Modificato manualmente">
+                          <History size={12} className="text-amber-500" />
+                        </span>
+                      )}
                     </div>
                   </div>
 
