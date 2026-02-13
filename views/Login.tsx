@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Input, Modal } from '../components/Shared';
+import { Card, Button, Input, Modal, Logo } from '../components/Shared';
 import { Construction, Eye, EyeOff, ArrowLeft, KeyRound, Mail, Lock } from 'lucide-react';
 import { User, UserRole, Company } from '../types';
 
@@ -143,31 +143,33 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
       <Modal {...modal} onClose={() => setModal({ ...modal, isOpen: false })} />
       <div className="w-full max-w-lg">
-        <div className="flex flex-col items-center mb-8 text-white">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-2xl mb-4 animate-bounce">
-            <Construction size={32} />
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight">CostruGest</h1>
-          <p className="text-slate-400 text-sm mt-1">Management Professionale Cantieri</p>
+        <div className="flex flex-col items-center mb-10 text-white">
+          <Logo size="xl" className="mb-6" />
+          <h1 className="text-4xl font-black tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+            CostruGest
+          </h1>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mt-3 bg-slate-800/50 px-4 py-1.5 rounded-full border border-slate-700">
+            Professional Construction Management
+          </p>
         </div>
 
-        <Card className="p-8 shadow-2xl">
-          <div className="flex justify-between items-center mb-6">
+        <Card className="p-8 shadow-2xl border-slate-700/50">
+          <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-bold text-slate-800">
-              {isRegistering ? `Step ${regStep}: ${regStep === 1 ? 'Dati Admin' : 'Dati Azienda'}` : 'Accedi al Sistema'}
+              {isRegistering ? `Step ${regStep}: ${regStep === 1 ? 'Dati Admin' : 'Dati Azienda'}` : 'Accesso Sicuro'}
             </h2>
             {isRegistering && (
               <button 
                 type="button"
                 onClick={() => regStep === 2 ? setRegStep(1) : setIsRegistering(false)} 
-                className="text-blue-600 text-sm font-semibold hover:underline"
+                className="text-blue-600 text-sm font-bold hover:text-blue-800 transition-colors"
               >
                 Indietro
               </button>
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {isRegistering && regStep === 1 && (
               <>
                 <div className="grid grid-cols-2 gap-4">
@@ -202,21 +204,21 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
             {(!isRegistering || regStep === 1) && (
               <>
                 <Input 
-                  label="Email" 
+                  label="Email Aziendale" 
                   type="email" 
                   value={email} 
                   onChange={e => setEmail(e.target.value)} 
                   required 
-                  placeholder="La tua email aziendale"
+                  placeholder="nome@azienda.it"
                 />
                 <div className="space-y-1">
                   <Input 
-                    label="Password" 
+                    label="Password di Accesso" 
                     type={showPassword ? 'text' : 'password'} 
                     value={password} 
                     onChange={e => setPassword(e.target.value)} 
                     required 
-                    placeholder="Digitare password..."
+                    placeholder="••••••••"
                     suffix={
                       <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-slate-400 hover:text-blue-600 transition-colors">
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -234,26 +236,34 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
               </>
             )}
 
-            <Button type="submit" className="w-full h-12 text-lg font-bold tracking-wide mt-2" disabled={loading}>
-              {loading ? "In corso..." : (isRegistering ? (regStep === 1 ? 'Prosegui' : 'Crea Azienda') : 'Accedi Ora')}
+            <Button type="submit" className="w-full h-14 text-lg font-bold tracking-wide mt-2 shadow-xl shadow-blue-500/20 active:scale-[0.98]" disabled={loading}>
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Verifica...</span>
+                </div>
+              ) : (
+                isRegistering ? (regStep === 1 ? 'Prosegui' : 'Crea Account Azienda') : 'Entra nel Sistema'
+              )}
             </Button>
           </form>
 
           {!isRegistering && (
-            <div className="mt-8 pt-6 border-t border-slate-100">
+            <div className="mt-10 pt-6 border-t border-slate-100">
               <button 
                 type="button"
                 onClick={() => setIsRegistering(true)} 
                 className="w-full text-center text-sm font-semibold text-slate-500 hover:text-blue-600 transition-colors"
               >
-                Nuova Azienda? <span className="text-blue-600">Registrati qui</span>
+                La tua azienda non è su CostruGest? <span className="text-blue-600 font-bold">Registrati</span>
               </button>
             </div>
           )}
         </Card>
       </div>
-      <div className="mt-8">
-         <p className="text-[10px] font-bold text-slate-600 tracking-widest uppercase">powered by Simone Barni</p>
+      <div className="mt-12 flex flex-col items-center gap-2 opacity-50">
+         <p className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase">Enterprise Grade Infrastructure</p>
+         <p className="text-[9px] font-bold text-slate-600 tracking-widest uppercase">powered by Simone Barni</p>
       </div>
     </div>
   );

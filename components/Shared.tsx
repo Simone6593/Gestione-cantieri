@@ -1,6 +1,40 @@
 
 import React from 'react';
-import { X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, AlertCircle, CheckCircle2, Construction, Shield } from 'lucide-react';
+
+export const Logo: React.FC<{ size?: 'sm' | 'md' | 'lg' | 'xl', className?: string, invert?: boolean }> = ({ size = 'md', className, invert = false }) => {
+  const sizes = {
+    sm: { container: "w-8 h-8", icon: 16, stroke: 2.5 },
+    md: { container: "w-12 h-12", icon: 24, stroke: 2 },
+    lg: { container: "w-16 h-16", icon: 32, stroke: 2 },
+    xl: { container: "w-24 h-24", icon: 48, stroke: 1.5 }
+  };
+
+  const selected = sizes[size];
+
+  return (
+    <div className={`relative flex items-center justify-center ${selected.container} ${className}`}>
+      {/* Background esagonale stilizzato con CSS */}
+      <div className={`absolute inset-0 transition-transform duration-500 hover:rotate-12 ${invert ? 'bg-white' : 'bg-gradient-to-br from-blue-600 to-indigo-700'} shadow-lg shadow-blue-500/20`}
+           style={{ clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' }}>
+      </div>
+      
+      {/* Icona centrale */}
+      <div className="relative z-10">
+        <Construction 
+          size={selected.icon} 
+          className={invert ? 'text-blue-600' : 'text-white'} 
+          strokeWidth={selected.stroke} 
+        />
+      </div>
+
+      {/* Dettaglio grafico di precisione (piccola bussola/mirino) */}
+      <div className={`absolute -bottom-0.5 -right-0.5 w-1/3 h-1/3 rounded-full border-2 ${invert ? 'border-blue-600 bg-white' : 'border-white bg-blue-500'} flex items-center justify-center z-20 shadow-sm`}>
+        <div className={`w-1 h-1 rounded-full ${invert ? 'bg-blue-600' : 'bg-white'}`} />
+      </div>
+    </div>
+  );
+};
 
 export const Card: React.FC<{ 
   children: React.ReactNode; 
