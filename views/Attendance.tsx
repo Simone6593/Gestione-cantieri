@@ -62,14 +62,16 @@ const Attendance: React.FC<AttendanceProps> = ({
       return;
     }
 
-    // 2. Se non esiste, controlla quanti operai sono ancora in cantiere
+    // 2. Se non esiste, controlla quanti operai sono ancora in cantiere (senza orario fine)
     const workersStillIn = attendance.filter(a => 
       !a.endTime && a.siteId === activeRecord.siteId
     );
 
     if (workersStillIn.length > 1) {
+      // Ci sono altri operai, chiedi se vuole compilare o delegare
       setPromptState('ask_report');
     } else {
+      // È l'ultimo operaio, obbliga la compilazione
       setPromptState('force_report');
     }
   };
@@ -110,7 +112,7 @@ const Attendance: React.FC<AttendanceProps> = ({
               <Button 
                 onClick={() => {
                   if (!currentCoords) { alert("Attendi il rilevamento GPS..."); return; }
-                  if (!assignedSiteId) { alert("Non sei assegnato a nessun cantiere oggi nel programma."); return; }
+                  if (!assignedSiteId) { alert("Non sei assegnato a nessun cantiere oggi."); return; }
                   onClockIn(assignedSiteId, currentCoords);
                 }}
                 disabled={!assignedSiteId}
@@ -142,7 +144,7 @@ const Attendance: React.FC<AttendanceProps> = ({
             <CheckCircle2 size={32} className="text-blue-600 shrink-0" />
             <div className="flex-1">
               <h3 className="font-bold text-blue-900 text-lg">Conferma Fine Turno</h3>
-              <p className="text-sm text-blue-800 mb-6 leading-relaxed">Il rapportino per questo cantiere è già stato inviato oggi da un membro del team. Puoi procedere con il clock-out.</p>
+              <p className="text-sm text-blue-800 mb-6 leading-relaxed">Il rapportino è già stato inviato. Vuoi confermare il clock-out?</p>
               <div className="flex gap-3">
                 <Button onClick={executeClockOut} className="px-8">Sì, Conferma</Button>
                 <Button variant="secondary" onClick={() => setPromptState('none')}>Indietro</Button>
@@ -157,8 +159,8 @@ const Attendance: React.FC<AttendanceProps> = ({
           <div className="flex gap-4">
             <HelpCircle size={32} className="text-amber-600 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-bold text-amber-900 text-lg">Rapportino non ancora compilato</h3>
-              <p className="text-sm text-amber-800 mb-6 leading-relaxed">Ci sono ancora colleghi attivi in cantiere. Vuoi compilare tu il rapportino adesso o preferisci delegare a chi resta?</p>
+              <h3 className="font-bold text-amber-900 text-lg">Rapportino Mancante</h3>
+              <p className="text-sm text-amber-800 mb-6 leading-relaxed">Ci sono altri colleghi in cantiere. Vuoi compilare tu il rapportino adesso o deleghi a chi resta?</p>
               <div className="flex gap-2 flex-wrap">
                 <Button onClick={onGoToReport} className="bg-amber-600 px-6">Compila ora</Button>
                 <Button variant="secondary" onClick={executeClockOut} className="px-6">Delega e chiudi turno</Button>
@@ -174,11 +176,11 @@ const Attendance: React.FC<AttendanceProps> = ({
           <div className="flex gap-4">
             <AlertCircle size={32} className="text-red-600 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-bold text-red-900 text-lg">Sei l'ultimo operaio in cantiere</h3>
-              <p className="text-sm text-red-800 mb-6 leading-relaxed">Il sistema ha rilevato che sei l'ultimo a lasciare il cantiere oggi. È <b>obbligatorio</b> compilare il rapportino per poter chiudere la giornata.</p>
+              <h3 className="font-bold text-red-900 text-lg">Ultimo operaio presente</h3>
+              <p className="text-sm text-red-800 mb-6 leading-relaxed">Sei l'ultimo a lasciare il cantiere. Devi obbligatoriamente compilare il rapportino per chiudere il turno.</p>
               <div className="flex gap-3">
                 <Button onClick={onGoToReport} className="bg-red-600 px-8">Vai al Rapportino</Button>
-                <Button variant="secondary" onClick={() => setPromptState('none')}>Indietro</Button>
+                <Button variant="secondary" onClick={() => setPromptState('none')}>Annulla</Button>
               </div>
             </div>
           </div>
@@ -210,9 +212,6 @@ const Attendance: React.FC<AttendanceProps> = ({
                 </div>
               </div>
             ))}
-            {attendance.filter(a => a.userId === user.id && a.startTime.includes(todayStr)).length === 0 && (
-              <p className="text-slate-400 text-center py-4 text-xs italic">Nessuna attività registrata per oggi.</p>
-            )}
           </div>
         </Card>
       </div>
