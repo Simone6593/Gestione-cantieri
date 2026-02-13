@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company } from '../types';
-import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon } from 'lucide-react';
+import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -54,38 +54,24 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
 
   const costAnalysis = useMemo(() => {
     const analysisMap: Record<string, { totalHours: number, realHourlyRate: number, totalRealCost: number }> = {};
-
     filteredAttendance.forEach(record => {
       if (!record.endTime) return;
       const hours = calculateHours(record.startTime, record.endTime);
       const recordDate = new Date(record.startTime);
-      const recordMonth = recordDate.getMonth() + 1;
-      const recordYear = recordDate.getFullYear();
-      const monthKey = `${recordMonth.toString().padStart(2, '0')}/${recordYear}`;
-      
+      const monthKey = `${(recordDate.getMonth() + 1).toString().padStart(2, '0')}/${recordDate.getFullYear()}`;
       const ps = paySlips.find(p => p.userId === record.userId && p.month === monthKey);
-      
       if (ps && ps.costoOrarioReale) {
-        analysisMap[record.id] = {
-          totalHours: hours,
-          realHourlyRate: ps.costoOrarioReale,
-          totalRealCost: hours * ps.costoOrarioReale
-        };
+        analysisMap[record.id] = { totalHours: hours, realHourlyRate: ps.costoOrarioReale, totalRealCost: hours * ps.costoOrarioReale };
       }
     });
-
     return analysisMap;
   }, [filteredAttendance, paySlips]);
 
-  const renderGpsIndicator = (label: string, coords?: { lat: number, lng: number }) => {
-    if (!coords) return (
-      <div className="flex items-center gap-1 text-[8px] font-bold text-slate-300 uppercase">
-        <MapPin size={10} /> {label} No-GPS
-      </div>
-    );
+  const renderGpsStatus = (label: string, coords?: { lat: number, lng: number }) => {
+    if (!coords) return <div className="text-[9px] text-slate-300 font-bold uppercase flex items-center gap-1"><MapPin size={10}/> {label} No-GPS</div>;
     return (
-      <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 uppercase" title={`Lat: ${coords.lat}, Lng: ${coords.lng}`}>
-        <CheckCircle2 size={10} /> {label} GPS OK
+      <div className="text-[9px] text-green-500 font-bold uppercase flex items-center gap-1" title={`Lat: ${coords.lat}, Lng: ${coords.lng}`}>
+        <CheckCircle2 size={10}/> {label} GPS OK
       </div>
     );
   };
@@ -108,18 +94,13 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
         endTime: editData.endTime ? new Date(editData.endTime).toISOString() : undefined,
       };
 
-      if (!originalRecord.originalStartTime) {
-        updates.originalStartTime = originalRecord.startTime;
-      }
-      if (originalRecord.endTime && !originalRecord.originalEndTime) {
-        updates.originalEndTime = originalRecord.endTime;
-      }
+      // Se è la prima modifica manuale, salviamo gli orari originali dell'app operaio
+      if (!originalRecord.originalStartTime) updates.originalStartTime = originalRecord.startTime;
+      if (originalRecord.endTime && !originalRecord.originalEndTime) updates.originalEndTime = originalRecord.endTime;
 
       await onUpdateRecord(editingId, updates);
       setEditingId(null);
-    } catch (e) {
-      alert("Errore durante l'aggiornamento della timbratura.");
-    }
+    } catch (e) { alert("Errore modifica."); }
   };
 
   return (
@@ -127,37 +108,25 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Registro Timbrature</h2>
-          <p className="text-sm text-slate-500">Log cronologico con verifica GPS e analisi costi.</p>
+          <p className="text-sm text-slate-500">Monitoraggio orari reali vs modificati con log GPS.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           {canEdit && (
-            <Button 
-              onClick={() => setShowCostAnalysis(!showCostAnalysis)} 
-              variant={showCostAnalysis ? "primary" : "secondary"}
-              className="border border-slate-200"
-            >
+            <Button onClick={() => setShowCostAnalysis(!showCostAnalysis)} variant={showCostAnalysis ? "primary" : "secondary"}>
               <Calculator size={18} /> {showCostAnalysis ? "Nascondi Costi" : "Analisi Costi"}
             </Button>
           )}
-
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
               type="text" 
-              placeholder="Cerca operaio o cantiere..."
-              value={searchTerm}
+              placeholder="Cerca..." 
+              value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm"
             />
           </div>
-          
-          <input 
-            type="date" 
-            value={filterDate}
-            onChange={e => setFilterDate(e.target.value)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          />
         </div>
       </div>
 
@@ -165,107 +134,90 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
         {filteredAttendance.map(record => {
           const report = getLinkedReport(record);
           const hours = calculateHours(record.startTime, record.endTime);
-          const analysis = costAnalysis ? costAnalysis[record.id] : null;
+          const analysis = costAnalysis[record.id];
           const isEditing = editingId === record.id;
-          const hasBeenEdited = !!record.originalStartTime;
+          const hasManualMod = !!record.originalStartTime;
           
           return (
-            <Card key={record.id} className={`p-4 bg-white hover:border-blue-200 transition-all border-l-4 ${isEditing ? 'border-l-amber-500 bg-amber-50/30' : 'border-l-blue-600'}`}>
-              <div className="flex flex-col lg:flex-row gap-6">
+            <Card key={record.id} className={`p-4 border-l-4 transition-all ${isEditing ? 'border-amber-500 bg-amber-50' : 'border-blue-600 bg-white'}`}>
+              <div className="flex flex-col lg:flex-row gap-4">
                 <div className="lg:w-1/4">
-                  <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase mb-1">
-                    <Calendar size={14} />
-                    {new Date(record.startTime).toLocaleDateString('it-IT')}
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 uppercase mb-1">
+                    <Calendar size={12}/> {new Date(record.startTime).toLocaleDateString('it-IT')}
                   </div>
-                  <h3 className="font-bold text-slate-800 text-lg">{record.userName}</h3>
-                  <p className="text-sm text-slate-500 font-medium truncate">{record.siteName}</p>
+                  <h3 className="font-bold text-slate-800">{record.userName}</h3>
+                  <p className="text-xs text-slate-500 truncate">{record.siteName}</p>
                   
-                  <div className="mt-3 flex flex-col gap-1">
-                    <div className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                      Ore: <span className="text-slate-800">{hours.toFixed(2)}h</span>
-                      {hasBeenEdited && (
-                        <span title="Modificato manualmente">
-                          <History size={12} className="text-amber-500" />
-                        </span>
-                      )}
-                    </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700">{hours.toFixed(2)}h totali</span>
+                    {hasManualMod && (
+                      <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1" title="Orario modificato da amministratore">
+                        <History size={10}/> MOD
+                      </span>
+                    )}
                   </div>
 
                   {showCostAnalysis && analysis && (
-                    <div className="mt-4 p-2 bg-blue-50 rounded border border-blue-100 animate-in fade-in duration-300">
-                      <div className="flex justify-between text-[10px] text-blue-600 font-bold uppercase mb-1">
-                        <span>Costo Orario</span>
-                        <span>€ {analysis.realHourlyRate.toFixed(2)}/h</span>
-                      </div>
-                      <div className="flex justify-between text-[11px] text-slate-800 font-bold">
-                        <span>Costo Commessa</span>
-                        <span>€ {analysis.totalRealCost.toFixed(2)}</span>
-                      </div>
+                    <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-100 text-xs">
+                      <div className="flex justify-between font-bold text-blue-700"><span>Costo Commessa:</span> <span>€ {analysis.totalRealCost.toFixed(2)}</span></div>
                     </div>
                   )}
 
                   {canEdit && !isEditing && (
-                    <div className="mt-4 flex gap-3">
-                      <button onClick={() => startEditing(record)} className="text-[10px] text-blue-600 uppercase font-bold tracking-widest hover:underline flex items-center gap-1">
-                        <Edit2 size={12} /> Modifica
-                      </button>
-                      <button onClick={() => confirm("Eliminare?") && onRemoveRecord(record.id)} className="text-[10px] text-red-500 uppercase font-bold tracking-widest hover:underline flex items-center gap-1">
-                        <Trash2 size={12} /> Elimina
-                      </button>
+                    <div className="mt-3 flex gap-4">
+                      <button onClick={() => startEditing(record)} className="text-[10px] font-bold text-blue-600 uppercase hover:underline">Modifica</button>
+                      <button onClick={() => confirm("Eliminare?") && onRemoveRecord(record.id)} className="text-[10px] font-bold text-red-500 uppercase hover:underline">Elimina</button>
                     </div>
                   )}
                 </div>
 
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : 'bg-slate-50 border-slate-100'}`}>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                      <span className="flex items-center gap-1">Inizio {hasBeenEdited && <span className="text-[8px] text-amber-600">(MOD)</span>}</span>
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* INIZIO */}
+                  <div className={`p-3 rounded-lg border ${isEditing ? 'bg-white' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">Inizio</span>
+                      {renderGpsStatus("App", record.startCoords)}
                     </div>
                     {isEditing ? (
-                      <input type="datetime-local" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} className="w-full text-sm font-bold bg-transparent outline-none text-slate-800" />
+                      <input type="datetime-local" value={editData.startTime} onChange={e => setEditData({...editData, startTime: e.target.value})} className="w-full text-xs font-bold bg-transparent" />
                     ) : (
-                      <div className="flex flex-col">
+                      <div>
                         <div className="text-lg font-bold text-slate-800">{formatTime(record.startTime)}</div>
-                        {record.originalStartTime && <div className="text-[9px] text-slate-400 font-mono italic">Orig: {formatTime(record.originalStartTime)}</div>}
+                        {record.originalStartTime && <div className="text-[8px] text-slate-400 font-mono italic">Originale: {formatTime(record.originalStartTime)}</div>}
                       </div>
                     )}
-                    <div className="pt-1 border-t border-slate-200/50 mt-1">
-                      {renderGpsIndicator("In", record.startCoords)}
-                    </div>
                   </div>
 
-                  <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : (record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100')}`}>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                      <span className="flex items-center gap-1">Fine {hasBeenEdited && <span className="text-[8px] text-amber-600">(MOD)</span>}</span>
+                  {/* FINE */}
+                  <div className={`p-3 rounded-lg border ${isEditing ? 'bg-white' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">Fine</span>
+                      {renderGpsStatus("App", record.endCoords)}
                     </div>
                     {isEditing ? (
-                      <input type="datetime-local" value={editData.endTime} onChange={e => setEditData({...editData, endTime: e.target.value})} className="w-full text-sm font-bold bg-transparent outline-none text-slate-800" />
+                      <input type="datetime-local" value={editData.endTime} onChange={e => setEditData({...editData, endTime: e.target.value})} className="w-full text-xs font-bold bg-transparent" />
                     ) : (
-                      <div className="flex flex-col">
+                      <div>
                         <div className="text-lg font-bold text-slate-800">{formatTime(record.endTime)}</div>
-                        {record.originalEndTime && <div className="text-[9px] text-slate-400 font-mono italic">Orig: {formatTime(record.originalEndTime)}</div>}
+                        {record.originalEndTime && <div className="text-[8px] text-slate-400 font-mono italic">Originale: {formatTime(record.originalEndTime)}</div>}
                       </div>
                     )}
-                    <div className="pt-1 border-t border-slate-200/50 mt-1">
-                      {renderGpsIndicator("Out", record.endCoords)}
-                    </div>
                   </div>
 
-                  <div className={`space-y-1 p-3 rounded-lg border ${isEditing ? 'flex items-center justify-center bg-amber-500 text-white' : (report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60')}`}>
+                  {/* RAPPORTINO */}
+                  <div className={`p-3 rounded-lg border ${isEditing ? 'bg-amber-100' : (report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60')}`}>
                     {isEditing ? (
-                      <div className="flex gap-2 w-full">
-                        <button onClick={() => handleSaveEdit(record)} className="flex-1 bg-white text-amber-600 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 shadow-sm"><Save size={14} /> Salva</button>
-                        <button onClick={() => setEditingId(null)} className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-bold text-xs">Annulla</button>
+                      <div className="h-full flex flex-col gap-2">
+                        <Button onClick={() => handleSaveEdit(record)} className="py-1 text-[10px] h-auto bg-amber-600">Salva</Button>
+                        <Button variant="ghost" onClick={() => setEditingId(null)} className="py-1 text-[10px] h-auto">Annulla</Button>
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                          <span>Rapportino</span>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Rapportino</span>
+                          {renderGpsStatus("Rep", report?.coords)}
                         </div>
                         <div className="text-lg font-bold text-slate-800">{report ? formatTime(report.timestamp) : '---'}</div>
-                        <div className="pt-1 border-t border-blue-200/50 mt-1">
-                          {renderGpsIndicator("Rep", report?.coords)}
-                        </div>
                       </>
                     )}
                   </div>

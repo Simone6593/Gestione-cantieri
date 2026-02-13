@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button } from '../components/Shared';
-import { Clock, MapPin, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { Clock, MapPin, AlertCircle, CheckCircle2, Info, HelpCircle } from 'lucide-react';
 import { AttendanceRecord, Site, UserRole, User, DailySchedule, DailyReport } from '../types';
 
 interface AttendanceProps {
@@ -26,8 +26,7 @@ const Attendance: React.FC<AttendanceProps> = ({
   onGoToReport 
 }) => {
   const [currentCoords, setCurrentCoords] = useState<{ lat: number, lng: number } | null>(null);
-  const [showReportPrompt, setShowReportPrompt] = useState(false);
-  const [blockingMessage, setBlockingMessage] = useState<string | null>(null);
+  const [promptState, setPromptState] = useState<'none' | 'confirm_standard' | 'ask_report' | 'force_report'>('none');
 
   const todayStr = new Date().toISOString().split('T')[0];
   
@@ -46,56 +45,39 @@ const Attendance: React.FC<AttendanceProps> = ({
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setCurrentCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => console.error("Geolocation error", err)
+        (err) => console.error("Geolocation error", err),
+        { enableHighAccuracy: true }
       );
     }
   }, []);
 
-  const handleAction = () => {
-    if (!currentCoords) {
-      alert("Attendi che il GPS rilevi la posizione prima di timbrare.");
+  const handleClockOutAttempt = () => {
+    if (!activeRecord || !currentCoords) return;
+
+    // 1. Verifica se il rapportino esiste già per questo cantiere oggi
+    const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === todayStr);
+
+    if (reportExists) {
+      setPromptState('confirm_standard');
       return;
     }
 
-    if (activeRecord) {
-      // CLOCK OUT WITH CONFIRMATION
-      if (!confirm("Sei sicuro di voler terminare il turno di lavoro ora?")) {
-        return;
-      }
+    // 2. Se non esiste, controlla quanti operai sono ancora in cantiere
+    const workersStillIn = attendance.filter(a => 
+      !a.endTime && a.siteId === activeRecord.siteId
+    );
 
-      const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === todayStr);
-      
-      if (reportExists) {
-        onClockOut(activeRecord.id, currentCoords);
-        return;
-      }
-
-      const todaySchedule = schedules[todayStr];
-      const assignedWorkerIds = (todaySchedule?.siteAssignments[activeRecord.siteId] || []) as string[];
-      
-      const workersStillClockedIn = attendance.filter(a => 
-        !a.endTime && 
-        a.siteId === activeRecord.siteId && 
-        assignedWorkerIds.includes(a.userId)
-      );
-
-      const isLastWorker = workersStillClockedIn.length <= 1;
-
-      if (isLastWorker) {
-        setBlockingMessage("Sei l'ultimo operaio presente. È obbligatorio compilare il rapportino giornaliero prima di timbrare la fine.");
-      } else {
-        onClockOut(activeRecord.id, currentCoords);
-        if (user.role === UserRole.WORKER) {
-          setShowReportPrompt(true);
-        }
-      }
+    if (workersStillIn.length > 1) {
+      setPromptState('ask_report');
     } else {
-      // CLOCK IN
-      if (!assignedSiteId) {
-        alert("Non risulti assegnato ad alcun cantiere per oggi nel programma giornaliero. Contatta il supervisore.");
-        return;
-      }
-      onClockIn(assignedSiteId, currentCoords);
+      setPromptState('force_report');
+    }
+  };
+
+  const executeClockOut = () => {
+    if (activeRecord && currentCoords) {
+      onClockOut(activeRecord.id, currentCoords);
+      setPromptState('none');
     }
   };
 
@@ -123,64 +105,80 @@ const Attendance: React.FC<AttendanceProps> = ({
             </p>
           </div>
 
-          {!activeRecord && assignedSite && (
-            <div className="max-w-xs mx-auto mb-8 p-4 bg-blue-50 rounded-xl border border-blue-100 flex items-start gap-3 text-left">
-              <Info size={20} className="text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Programma del Giorno</p>
-                <p className="text-sm font-semibold text-slate-700">{assignedSite.client}</p>
-                <p className="text-xs text-slate-500">{assignedSite.address}</p>
-              </div>
-            </div>
-          )}
-
           <div className="flex flex-col items-center gap-4">
-            <Button 
-              onClick={handleAction}
-              disabled={!assignedSiteId && !activeRecord}
-              className={`w-full max-w-sm h-14 text-lg shadow-lg active:scale-95 transition-all ${activeRecord ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
-            >
-              {activeRecord ? "Fine Lavori (Clock Out)" : "Inizio Lavori (Clock In)"}
-            </Button>
+            {!activeRecord ? (
+              <Button 
+                onClick={() => {
+                  if (!currentCoords) { alert("Attendi il GPS..."); return; }
+                  if (!assignedSiteId) { alert("Non assegnato a nessun cantiere oggi."); return; }
+                  onClockIn(assignedSiteId, currentCoords);
+                }}
+                disabled={!assignedSiteId}
+                className="w-full max-w-sm h-14 text-lg shadow-lg bg-blue-600 hover:bg-blue-700"
+              >
+                Inizio Lavori (Clock In)
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleClockOutAttempt}
+                className="w-full max-w-sm h-14 text-lg shadow-lg bg-amber-600 hover:bg-amber-700"
+              >
+                Fine Lavori (Clock Out)
+              </Button>
+            )}
             
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <MapPin size={14} />
+              <MapPin size={14} className={currentCoords ? "text-green-500" : "text-slate-300"} />
               {currentCoords ? `GPS OK: ${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}` : "Rilevamento posizione..."}
             </div>
           </div>
         </div>
       </Card>
 
-      {blockingMessage && (
-        <Card className="p-6 border-red-200 bg-red-50 animate-in fade-in slide-in-from-top-4">
+      {/* MODALI DI CONTROLLO CLOCK-OUT */}
+      {promptState === 'confirm_standard' && (
+        <Card className="p-6 border-blue-200 bg-blue-50 animate-in fade-in slide-in-from-bottom-4">
           <div className="flex gap-4">
-            <div className="text-red-600 shrink-0">
-              <AlertCircle size={24} />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-red-900">Azione Richiesta</h3>
-              <p className="text-red-800 mb-4">{blockingMessage}</p>
+            <CheckCircle2 size={24} className="text-blue-600 shrink-0" />
+            <div className="flex-1">
+              <h3 className="font-bold text-blue-900">Conferma Fine Turno</h3>
+              <p className="text-sm text-blue-800 mb-4">Il rapportino è già stato inviato per oggi. Vuoi registrare il clock-out?</p>
               <div className="flex gap-3">
-                <Button onClick={onGoToReport} className="bg-red-600 hover:bg-red-700">Compila Rapportino</Button>
-                <Button onClick={() => setBlockingMessage(null)} variant="secondary">Annulla</Button>
+                <Button onClick={executeClockOut}>Conferma</Button>
+                <Button variant="secondary" onClick={() => setPromptState('none')}>Annulla</Button>
               </div>
             </div>
           </div>
         </Card>
       )}
 
-      {showReportPrompt && !blockingMessage && (
-        <Card className="p-6 border-amber-200 bg-amber-50 animate-in fade-in slide-in-from-top-4">
+      {promptState === 'ask_report' && (
+        <Card className="p-6 border-amber-200 bg-amber-50 animate-in fade-in slide-in-from-bottom-4">
           <div className="flex gap-4">
-            <div className="text-amber-600 shrink-0">
-              <AlertCircle size={24} />
+            <HelpCircle size={24} className="text-amber-600 shrink-0" />
+            <div className="flex-1">
+              <h3 className="font-bold text-amber-900">Rapportino non compilato</h3>
+              <p className="text-sm text-amber-800 mb-4">Ci sono ancora colleghi in cantiere, ma il rapportino non è stato fatto. Vuoi compilarlo tu prima di andare?</p>
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={onGoToReport} className="bg-amber-600">Sì, compila ora</Button>
+                <Button variant="secondary" onClick={executeClockOut}>No, delega ai colleghi</Button>
+                <Button variant="ghost" onClick={() => setPromptState('none')}>Annulla</Button>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-amber-900">Rapportino Mancante</h3>
-              <p className="text-amber-800 mb-4">Hai timbrato la fine, ma nessun collega ha ancora inviato il rapportino. Vuoi scriverlo tu adesso?</p>
+          </div>
+        </Card>
+      )}
+
+      {promptState === 'force_report' && (
+        <Card className="p-6 border-red-200 bg-red-50 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex gap-4">
+            <AlertCircle size={24} className="text-red-600 shrink-0" />
+            <div className="flex-1">
+              <h3 className="font-bold text-red-900">Ultimo operaio in cantiere</h3>
+              <p className="text-sm text-red-800 mb-4">Sei l'ultimo a lasciare il cantiere. È obbligatorio compilare il rapportino per poter fare il clock-out.</p>
               <div className="flex gap-3">
-                <Button onClick={onGoToReport} className="bg-amber-600 hover:bg-amber-700">Scrivi Rapportino</Button>
-                <Button onClick={() => setShowReportPrompt(false)} variant="secondary">No, lo farà un collega</Button>
+                <Button onClick={onGoToReport} className="bg-red-600">Vai al Rapportino</Button>
+                <Button variant="secondary" onClick={() => setPromptState('none')}>Indietro</Button>
               </div>
             </div>
           </div>
@@ -212,15 +210,8 @@ const Attendance: React.FC<AttendanceProps> = ({
                 </div>
               </div>
             ))}
-            {attendance.filter(a => a.userId === user.id && a.startTime.includes(todayStr)).length === 0 && (
-              <p className="text-slate-400 text-xs italic text-center py-4">Nessun movimento registrato oggi.</p>
-            )}
           </div>
         </Card>
-      </div>
-
-      <div className="text-center pb-8 opacity-40">
-        <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">powered by Simone Barni</p>
       </div>
     </div>
   );
