@@ -85,18 +85,18 @@ const Attendance: React.FC<AttendanceProps> = ({
 
   return (
     <div className="space-y-6">
-      <Card className="p-8 text-center bg-gradient-to-br from-white to-slate-50 relative overflow-hidden">
+      <Card className="p-8 text-center bg-gradient-to-br from-white to-slate-50 relative overflow-hidden shadow-md">
         <div className="absolute top-0 right-0 p-4 opacity-10">
           <Clock size={120} />
         </div>
 
         <div className="relative z-10">
           <div className="mb-6">
-            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 shadow-inner ${activeRecord ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 shadow-inner ${activeRecord ? 'bg-amber-100 text-amber-600 border border-amber-200' : 'bg-blue-100 text-blue-600 border border-blue-200'}`}>
               <Clock size={40} />
             </div>
             <h2 className="text-2xl font-bold text-slate-800">Ciao, {user.firstName}!</h2>
-            <p className="text-slate-500 mt-1">
+            <p className="text-slate-500 mt-1 font-medium">
               {activeRecord 
                 ? `Operativo presso: ${activeRecord.siteName}` 
                 : assignedSite 
@@ -109,8 +109,8 @@ const Attendance: React.FC<AttendanceProps> = ({
             {!activeRecord ? (
               <Button 
                 onClick={() => {
-                  if (!currentCoords) { alert("Attendi il GPS..."); return; }
-                  if (!assignedSiteId) { alert("Non assegnato a nessun cantiere oggi."); return; }
+                  if (!currentCoords) { alert("Attendi il rilevamento GPS..."); return; }
+                  if (!assignedSiteId) { alert("Non sei assegnato a nessun cantiere oggi nel programma."); return; }
                   onClockIn(assignedSiteId, currentCoords);
                 }}
                 disabled={!assignedSiteId}
@@ -127,7 +127,7 @@ const Attendance: React.FC<AttendanceProps> = ({
               </Button>
             )}
             
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-slate-400 font-bold uppercase tracking-wider">
               <MapPin size={14} className={currentCoords ? "text-green-500" : "text-slate-300"} />
               {currentCoords ? `GPS OK: ${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}` : "Rilevamento posizione..."}
             </div>
@@ -137,15 +137,15 @@ const Attendance: React.FC<AttendanceProps> = ({
 
       {/* MODALI DI CONTROLLO CLOCK-OUT */}
       {promptState === 'confirm_standard' && (
-        <Card className="p-6 border-blue-200 bg-blue-50 animate-in fade-in slide-in-from-bottom-4">
+        <Card className="p-6 border-blue-200 bg-blue-50 animate-in fade-in slide-in-from-bottom-4 shadow-lg border-l-4 border-l-blue-600">
           <div className="flex gap-4">
-            <CheckCircle2 size={24} className="text-blue-600 shrink-0" />
+            <CheckCircle2 size={32} className="text-blue-600 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-bold text-blue-900">Conferma Fine Turno</h3>
-              <p className="text-sm text-blue-800 mb-4">Il rapportino è già stato inviato per oggi. Vuoi registrare il clock-out?</p>
+              <h3 className="font-bold text-blue-900 text-lg">Conferma Fine Turno</h3>
+              <p className="text-sm text-blue-800 mb-6 leading-relaxed">Il rapportino per questo cantiere è già stato inviato oggi da un membro del team. Puoi procedere con il clock-out.</p>
               <div className="flex gap-3">
-                <Button onClick={executeClockOut}>Conferma</Button>
-                <Button variant="secondary" onClick={() => setPromptState('none')}>Annulla</Button>
+                <Button onClick={executeClockOut} className="px-8">Sì, Conferma</Button>
+                <Button variant="secondary" onClick={() => setPromptState('none')}>Indietro</Button>
               </div>
             </div>
           </div>
@@ -153,15 +153,15 @@ const Attendance: React.FC<AttendanceProps> = ({
       )}
 
       {promptState === 'ask_report' && (
-        <Card className="p-6 border-amber-200 bg-amber-50 animate-in fade-in slide-in-from-bottom-4">
+        <Card className="p-6 border-amber-200 bg-amber-50 animate-in fade-in slide-in-from-bottom-4 shadow-lg border-l-4 border-l-amber-500">
           <div className="flex gap-4">
-            <HelpCircle size={24} className="text-amber-600 shrink-0" />
+            <HelpCircle size={32} className="text-amber-600 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-bold text-amber-900">Rapportino non compilato</h3>
-              <p className="text-sm text-amber-800 mb-4">Ci sono ancora colleghi in cantiere, ma il rapportino non è stato fatto. Vuoi compilarlo tu prima di andare?</p>
+              <h3 className="font-bold text-amber-900 text-lg">Rapportino non ancora compilato</h3>
+              <p className="text-sm text-amber-800 mb-6 leading-relaxed">Ci sono ancora colleghi attivi in cantiere. Vuoi compilare tu il rapportino adesso o preferisci delegare a chi resta?</p>
               <div className="flex gap-2 flex-wrap">
-                <Button onClick={onGoToReport} className="bg-amber-600">Sì, compila ora</Button>
-                <Button variant="secondary" onClick={executeClockOut}>No, delega ai colleghi</Button>
+                <Button onClick={onGoToReport} className="bg-amber-600 px-6">Compila ora</Button>
+                <Button variant="secondary" onClick={executeClockOut} className="px-6">Delega e chiudi turno</Button>
                 <Button variant="ghost" onClick={() => setPromptState('none')}>Annulla</Button>
               </div>
             </div>
@@ -170,14 +170,14 @@ const Attendance: React.FC<AttendanceProps> = ({
       )}
 
       {promptState === 'force_report' && (
-        <Card className="p-6 border-red-200 bg-red-50 animate-in fade-in slide-in-from-bottom-4">
+        <Card className="p-6 border-red-200 bg-red-50 animate-in fade-in slide-in-from-bottom-4 shadow-lg border-l-4 border-l-red-600">
           <div className="flex gap-4">
-            <AlertCircle size={24} className="text-red-600 shrink-0" />
+            <AlertCircle size={32} className="text-red-600 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-bold text-red-900">Ultimo operaio in cantiere</h3>
-              <p className="text-sm text-red-800 mb-4">Sei l'ultimo a lasciare il cantiere. È obbligatorio compilare il rapportino per poter fare il clock-out.</p>
+              <h3 className="font-bold text-red-900 text-lg">Sei l'ultimo operaio in cantiere</h3>
+              <p className="text-sm text-red-800 mb-6 leading-relaxed">Il sistema ha rilevato che sei l'ultimo a lasciare il cantiere oggi. È <b>obbligatorio</b> compilare il rapportino per poter chiudere la giornata.</p>
               <div className="flex gap-3">
-                <Button onClick={onGoToReport} className="bg-red-600">Vai al Rapportino</Button>
+                <Button onClick={onGoToReport} className="bg-red-600 px-8">Vai al Rapportino</Button>
                 <Button variant="secondary" onClick={() => setPromptState('none')}>Indietro</Button>
               </div>
             </div>
@@ -189,27 +189,30 @@ const Attendance: React.FC<AttendanceProps> = ({
         <Card className="p-6">
           <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
             <CheckCircle2 size={18} className="text-green-500" />
-            Riepilogo Oggi
+            Attività di Oggi
           </h3>
           <div className="space-y-4">
             {attendance.filter(a => a.userId === user.id && a.startTime.includes(todayStr)).map(record => (
-              <div key={record.id} className="flex justify-between items-center text-sm border-b border-slate-100 pb-2 last:border-0">
+              <div key={record.id} className="flex justify-between items-center text-sm border-b border-slate-100 pb-3 last:border-0">
                 <div>
-                  <p className="font-semibold">{record.siteName}</p>
-                  <p className="text-slate-500 text-xs">Inizio: {new Date(record.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                  <p className="font-bold text-slate-700">{record.siteName}</p>
+                  <p className="text-slate-500 text-xs">Ingresso: {new Date(record.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                 </div>
                 <div className="text-right">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${record.endTime ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700'}`}>
-                    {record.endTime ? 'Completato' : 'In corso'}
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${record.endTime ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}>
+                    {record.endTime ? 'Chiuso' : 'Attivo'}
                   </span>
                   {record.endTime && (
-                    <p className="text-slate-400 text-[10px] mt-1">
-                      Fine: {new Date(record.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    <p className="text-slate-400 text-[10px] mt-1 font-medium">
+                      Uscita: {new Date(record.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </p>
                   )}
                 </div>
               </div>
             ))}
+            {attendance.filter(a => a.userId === user.id && a.startTime.includes(todayStr)).length === 0 && (
+              <p className="text-slate-400 text-center py-4 text-xs italic">Nessuna attività registrata per oggi.</p>
+            )}
           </div>
         </Card>
       </div>

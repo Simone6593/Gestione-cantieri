@@ -19,6 +19,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  if (!user) return null;
+
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
     { id: 'daily-report', label: 'Rapportino', icon: ClipboardCheck, roles: [] }, 
