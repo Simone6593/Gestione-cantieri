@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, PaySlip } from '../types';
-import { db, storage } from '../firebase';
+import { db, storage, auth } from '../firebase';
 import { collection, addDoc, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Upload, FileText, CheckCircle, Clock, Trash2, Calendar, User as UserIcon } from 'lucide-react';
@@ -22,7 +22,6 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
   const workers = users.filter(u => u.role === UserRole.WORKER);
 
   useEffect(() => {
-    // Rimuoviamo l'orderBy dalla query Firestore per evitare la necessità di un indice composto
     const q = query(
       collection(db, 'pay_slips'),
       where('aziendaId', '==', currentUser.aziendaId)
@@ -30,7 +29,6 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaySlip));
-      // Ordiniamo lato client per uploadDate decrescente
       data.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
       setPaySlips(data);
     });
@@ -40,6 +38,16 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Debug Auth
+    console.log("DEBUG: Current Auth State:", auth.currentUser ? "Autenticato" : "NON Autenticato");
+    console.log("DEBUG: Auth UID:", auth.currentUser?.uid);
+
+    if (!auth.currentUser) {
+      alert("Errore: Sessione scaduta o non valida. Effettua nuovamente il login.");
+      return;
+    }
+
     if (!selectedUser || !month || !file) {
       alert("Seleziona utente, mese e file PDF.");
       return;
@@ -51,7 +59,18 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
       const fileName = `${month.replace('/', '-')}_${Date.now()}.pdf`;
       const storageRef = ref(storage, `pay_slips/${selectedUser}/${fileName}`);
       
-      const snapshot = await uploadBytes(storageRef, file);
+      // Definiamo i metadati per forzare il Content-Type (risolve molti problemi CORS e Rules)
+      const metadata = {
+        contentType: 'application/pdf',
+        customMetadata: {
+          'aziendaId': currentUser.aziendaId,
+          'userId': selectedUser,
+          'month': month
+        }
+      };
+
+      console.log("DEBUG: Inizio uploadBytes su path:", storageRef.fullPath);
+      const snapshot = await uploadBytes(storageRef, file, metadata);
       const fileUrl = await getDownloadURL(snapshot.ref);
 
       await addDoc(collection(db, 'pay_slips'), {
@@ -70,8 +89,8 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
       setMonth('');
       setFile(null);
     } catch (error: any) {
-      console.error(error);
-      alert("Errore durante il caricamento: " + error.message);
+      console.error("ERRORE CARICAMENTO STORAGE:", error);
+      alert("Errore durante il caricamento: " + (error.message || "Controlla la console per i dettagli."));
     } finally {
       setIsUploading(false);
     }

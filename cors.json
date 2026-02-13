@@ -1,9 +1,9 @@
 
 [
   {
-    "origin": ["*"],
+    "origin": ["https://gestione-cantieri-two.vercel.app", "http://localhost:5173"],
     "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    "responseHeader": ["Content-Type", "Authorization", "x-goog-resumable"],
+    "responseHeader": ["Content-Type", "Authorization", "x-goog-resumable", "x-firebase-storage-version", "x-goog-meta-*"],
     "maxAgeSeconds": 3600
   }
 ]
