@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button } from '../components/Shared';
-import { Clock, MapPin, AlertCircle, CheckCircle2, Info, HelpCircle, ChevronRight } from 'lucide-react';
-import { AttendanceRecord, Site, UserRole, User, DailySchedule, DailyReport } from '../types';
+import { Clock, MapPin, AlertCircle, CheckCircle2, HelpCircle, ChevronRight, X } from 'lucide-react';
+import { AttendanceRecord, Site, User, DailySchedule, DailyReport } from '../types';
 
 interface AttendanceProps {
   user: User;
@@ -54,16 +54,22 @@ const Attendance: React.FC<AttendanceProps> = ({
   const handleClockOutAttempt = () => {
     if (!activeRecord || !currentCoords) return;
 
+    // 1. Verifica se il rapportino è già stato fatto per questo cantiere oggi
     const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === todayStr);
+    
     if (reportExists) {
       setPromptState('confirm_simple');
       return;
     }
 
+    // 2. Conta quanti operai sono attivi in questo cantiere
     const workersStillIn = attendance.filter(a => !a.endTime && a.siteId === activeRecord.siteId);
+
     if (workersStillIn.length > 1) {
+      // Ci sono altri colleghi: richiesta facoltativa/delega
       setPromptState('ask_delegate');
     } else {
+      // È l'ultimo: obbligo rapportino
       setPromptState('force_report');
     }
   };
@@ -83,47 +89,137 @@ const Attendance: React.FC<AttendanceProps> = ({
         <div className="absolute top-0 right-0 p-4 opacity-10"><Clock size={120} /></div>
         <div className="relative z-10">
           <div className="mb-6">
-            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 shadow-inner ${activeRecord ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}><Clock size={40} /></div>
+            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 shadow-inner ${activeRecord ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+              <Clock size={40} />
+            </div>
             <h2 className="text-2xl font-bold text-slate-800">Ciao, {user.firstName}!</h2>
-            <p className="text-slate-500 mt-1 font-medium">{activeRecord ? `Operativo presso: ${activeRecord.siteName}` : assignedSite ? `Oggi sei assegnato a: ${assignedSite.client}` : "Nessuna assegnazione trovata per oggi."}</p>
+            <p className="text-slate-500 mt-1 font-medium">
+              {activeRecord 
+                ? `Operativo presso: ${activeRecord.siteName}` 
+                : assignedSite 
+                  ? `Oggi sei assegnato a: ${assignedSite.client}`
+                  : "Nessuna assegnazione trovata per oggi."}
+            </p>
           </div>
+
           <div className="flex flex-col items-center gap-4">
             {!activeRecord ? (
-              <Button onClick={() => { if (!currentCoords) { alert("Attendi il segnale GPS..."); return; } if (!assignedSiteId) { alert("Non hai cantieri assegnati oggi."); return; } onClockIn(assignedSiteId, currentCoords); }} disabled={!assignedSiteId} className="w-full max-w-sm h-14 text-lg shadow-lg bg-blue-600">Inizio Lavori</Button>
+              <Button 
+                onClick={() => {
+                  if (!currentCoords) { alert("Attendi il segnale GPS..."); return; }
+                  if (!assignedSiteId) { alert("Non hai cantieri assegnati oggi."); return; }
+                  onClockIn(assignedSiteId, currentCoords);
+                }}
+                disabled={!assignedSiteId}
+                className="w-full max-w-sm h-14 text-lg shadow-lg"
+              >
+                Inizio Lavori
+              </Button>
             ) : (
-              <Button onClick={handleClockOutAttempt} className="w-full max-w-sm h-14 text-lg shadow-lg bg-amber-600">Fine Lavori</Button>
+              <Button 
+                onClick={handleClockOutAttempt}
+                className="w-full max-w-sm h-14 text-lg shadow-lg bg-amber-600"
+              >
+                Fine Lavori
+              </Button>
             )}
-            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><MapPin size={14} className={currentCoords ? "text-green-500" : "text-slate-300"} />{currentCoords ? `GPS ATTIVO: ${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}` : "Rilevamento posizione..."}</div>
+            
+            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <MapPin size={14} className={currentCoords ? "text-green-500" : "text-slate-300"} />
+              {currentCoords ? `GPS ATTIVO: ${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}` : "Rilevamento posizione..."}
+            </div>
           </div>
         </div>
       </Card>
 
-      {promptState === 'confirm_simple' && (
-        <Card className="p-6 border-l-4 border-blue-500 bg-blue-50 animate-in slide-in-from-top-4 shadow-md">
-          <div className="flex gap-4"><CheckCircle2 size={32} className="text-blue-600 shrink-0" /><div><h3 className="font-bold text-blue-900">Chiudi il turno?</h3><p className="text-sm text-blue-800 mb-4">Il rapportino di oggi è già stato inviato da un tuo collega.</p><div className="flex gap-2"><Button onClick={executeClockOut}>Conferma Uscita</Button><Button variant="ghost" onClick={() => setPromptState('none')}>Annulla</Button></div></div></div>
-        </Card>
-      )}
+      {/* SISTEMA DI POP-UP MODALI (CENTERED) */}
+      {promptState !== 'none' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <Card className="w-full max-w-md p-6 relative animate-in zoom-in duration-300 overflow-visible">
+            <button onClick={() => setPromptState('none')} className="absolute -top-2 -right-2 bg-white text-slate-400 p-1.5 rounded-full shadow-lg border hover:text-slate-600">
+              <X size={20} />
+            </button>
 
-      {promptState === 'ask_delegate' && (
-        <Card className="p-6 border-l-4 border-amber-500 bg-amber-50 animate-in slide-in-from-top-4 shadow-md">
-          <div className="flex gap-4"><HelpCircle size={32} className="text-amber-600 shrink-0" /><div><h3 className="font-bold text-amber-900">Rapportino mancante</h3><p className="text-sm text-amber-800 mb-4">Nessuno ha ancora inviato il rapporto di oggi. Vuoi compilarlo tu prima di andare via?</p><div className="flex flex-wrap gap-2"><Button onClick={onGoToReport} className="bg-amber-600">Sì, lo faccio ora</Button><Button variant="secondary" onClick={executeClockOut}>No, delego a chi resta</Button><Button variant="ghost" onClick={() => setPromptState('none')}>Annulla</Button></div></div></div>
-        </Card>
-      )}
+            {promptState === 'confirm_simple' && (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800">Confermi l'uscita?</h3>
+                <p className="text-sm text-slate-500 mt-2 mb-6">
+                  Il rapportino giornaliero per questo cantiere è già stato inviato correttamente da un tuo collega.
+                </p>
+                <div className="space-y-2">
+                  <Button onClick={executeClockOut} className="w-full h-12">Si, Timbra Uscita</Button>
+                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Annulla</Button>
+                </div>
+              </div>
+            )}
 
-      {promptState === 'force_report' && (
-        <Card className="p-6 border-l-4 border-red-500 bg-red-50 animate-in slide-in-from-top-4 shadow-md">
-          <div className="flex gap-4"><AlertCircle size={32} className="text-red-600 shrink-0" /><div><h3 className="font-bold text-red-900">Azione Obbligatoria</h3><p className="text-sm text-red-800 mb-4">Sei l'ultimo a lasciare il cantiere. Devi obbligatoriamente compilare il rapportino giornaliero prima di poter timbrare l'uscita.</p><div className="flex gap-2"><Button onClick={onGoToReport} className="bg-red-600">Vai al Rapportino <ChevronRight size={16}/></Button><Button variant="ghost" onClick={() => setPromptState('none')}>Annulla</Button></div></div></div>
-        </Card>
+            {promptState === 'ask_delegate' && (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <HelpCircle size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800">Rapportino Mancante</h3>
+                <p className="text-sm text-slate-500 mt-2 mb-6">
+                  Nessuno ha ancora inviato il rapporto di oggi. Vuoi compilarlo tu o lo lasci fare ai colleghi che restano?
+                </p>
+                <div className="space-y-3">
+                  <Button onClick={onGoToReport} className="w-full h-12 bg-amber-600">
+                    Sì, lo compilo ora
+                  </Button>
+                  <Button variant="secondary" onClick={executeClockOut} className="w-full h-12">
+                    Delego ai colleghi ed Esco
+                  </Button>
+                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Torna Indietro</Button>
+                </div>
+              </div>
+            )}
+
+            {promptState === 'force_report' && (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800">Azione Obbligatoria</h3>
+                <p className="text-sm text-slate-500 mt-2 mb-6">
+                  Sei l'ultimo a lasciare il cantiere oggi. Devi obbligatoriamente inviare il rapportino prima di poter timbrare l'uscita.
+                </p>
+                <div className="space-y-2">
+                  <Button onClick={onGoToReport} className="w-full h-12 bg-red-600">
+                    Vai al Rapportino <ChevronRight size={18} />
+                  </Button>
+                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Annulla</Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
         <Card className="p-6">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 uppercase text-[10px] tracking-widest text-slate-400"><Clock size={16} /> Movimenti Odierni</h3>
+          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 uppercase text-[10px] tracking-widest text-slate-400">
+            <Clock size={16} /> Movimenti Odierni
+          </h3>
           <div className="space-y-3">
             {attendance.filter(a => a.userId === user.id && a.startTime.includes(todayStr)).map(record => (
               <div key={record.id} className="flex justify-between items-center text-sm bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <div><p className="font-bold text-slate-700">{record.siteName}</p><p className="text-[10px] text-slate-500">INGRESSO: {new Date(record.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p></div>
-                <div className="text-right"><span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${record.endTime ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-green-700'}`}>{record.endTime ? 'Chiuso' : 'In Corso'}</span>{record.endTime && <p className="text-slate-400 text-[9px] mt-1 font-bold">USCITA: {new Date(record.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>}</div>
+                <div>
+                  <p className="font-bold text-slate-700">{record.siteName}</p>
+                  <p className="text-[10px] text-slate-500">INGRESSO: {new Date(record.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${record.endTime ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-green-700'}`}>
+                    {record.endTime ? 'Chiuso' : 'In Corso'}
+                  </span>
+                  {record.endTime && (
+                    <p className="text-slate-400 text-[9px] mt-1 font-bold">
+                      USCITA: {new Date(record.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </p>
+                  )}
+                </div>
               </div>
             ))}
           </div>
