@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
-import { User, UserRole, PaySlip, Company } from '../types';
+import { User, UserRole, PaySlip, Company, AttendanceRecord } from '../types';
 import { db, auth } from '../firebase';
-import { collection, addDoc, query, where, onSnapshot, doc, deleteDoc, getDoc } from 'firebase/firestore';
-import { Upload, FileText, Trash2, User as UserIcon, AlertTriangle, Calculator, Info } from 'lucide-react';
+import { collection, addDoc, query, where, onSnapshot, doc, deleteDoc, getDoc, getDocs } from 'firebase/firestore';
+import { Upload, FileText, Trash2, User as UserIcon, AlertTriangle, Calculator, Info, ClockAlert } from 'lucide-react';
 
 interface PaySlipsAdminProps {
   currentUser: User;
@@ -16,11 +16,13 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [companyParams, setCompanyParams] = useState<any>(null);
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   
   // Dati LUL per calcolo costi
   const [competenzeLorde, setCompetenzeLorde] = useState('');
   const [imponibileInps, setImponibileInps] = useState('');
   const [imponibileInail, setImponibileInail] = useState('');
+  const [oreRetribuite, setOreRetribuite] = useState('');
 
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -34,22 +36,24 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i);
 
   useEffect(() => {
-    // Caricamento parametri costo azienda per stima in tempo reale
-    const fetchCompany = async () => {
+    const fetchInitialData = async () => {
+      // 1. Parametri costo
       const docRef = doc(db, 'aziende', currentUser.aziendaId);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         setCompanyParams((snap.data() as Company).costParameters);
       }
+
+      // 2. Timbrature per alert coerenza
+      const qAtt = query(collection(db, 'timbrature'), where('aziendaId', '==', currentUser.aziendaId));
+      const attSnap = await getDocs(qAtt);
+      setAllAttendance(attSnap.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
     };
-    fetchCompany();
+    fetchInitialData();
 
-    const q = query(
-      collection(db, 'pay_slips_data'),
-      where('aziendaId', '==', currentUser.aziendaId)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // 3. Listener buste paga
+    const qPs = query(collection(db, 'pay_slips_data'), where('aziendaId', '==', currentUser.aziendaId));
+    const unsubscribe = onSnapshot(qPs, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaySlip));
       data.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
       setPaySlips(data);
@@ -58,9 +62,29 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
     return () => unsubscribe();
   }, [currentUser.aziendaId]);
 
-  // Calcolo stime automatiche basate sui parametri aziendali
-  const estimations = useMemo(() => {
-    if (!companyParams) return { cassaEdile: 0, altriCosti: 0 };
+  // Calcolo ore timbrate nell'app per il mese selezionato
+  const appHoursForMonth = useMemo(() => {
+    if (!selectedUser) return 0;
+    const monthStr = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}`;
+    return allAttendance
+      .filter(a => a.userId === selectedUser && a.startTime.includes(monthStr) && a.endTime)
+      .reduce((sum, a) => {
+        const h = (new Date(a.endTime!).getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60);
+        return sum + h;
+      }, 0);
+  }, [selectedUser, selectedMonth, selectedYear, allAttendance]);
+
+  // Alert coerenza (scostamento > 10%)
+  const showHoursAlert = useMemo(() => {
+    const retribuite = Number(oreRetribuite) || 0;
+    if (retribuite === 0 || appHoursForMonth === 0) return false;
+    const diff = Math.abs(retribuite - appHoursForMonth);
+    return (diff / retribuite) > 0.10;
+  }, [oreRetribuite, appHoursForMonth]);
+
+  // Calcolo stime automatiche e costo orario reale
+  const calculations = useMemo(() => {
+    if (!companyParams) return { cassaEdile: 0, altriCosti: 0, costoTotale: 0, costoOrario: 0 };
     
     const lordo = Number(competenzeLorde) || 0;
     const inpsBase = Number(imponibileInps) || 0;
@@ -71,11 +95,19 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
     const inailAzienda = inailBase * (companyParams.inailRate / 100);
     const tfr = lordo / (companyParams.tfrDivisor || 13.5);
 
+    const costoExtra = inpsAzienda + inailAzienda + tfr + cassaEdile;
+    const costoTotale = lordo + costoExtra;
+    
+    // Il costo orario REALE si basa sulle ore effettivamente timbrate nell'app
+    const costoOrario = appHoursForMonth > 0 ? costoTotale / appHoursForMonth : 0;
+
     return {
       cassaEdile,
-      altriCosti: inpsAzienda + inailAzienda + tfr
+      altriCosti: inpsAzienda + inailAzienda + tfr,
+      costoTotale,
+      costoOrario
     };
-  }, [competenzeLorde, imponibileInps, imponibileInail, companyParams]);
+  }, [competenzeLorde, imponibileInps, imponibileInail, companyParams, appHoursForMonth]);
 
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -111,6 +143,8 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
         competenzeLorde: Number(competenzeLorde) || 0,
         imponibileInps: Number(imponibileInps) || 0,
         imponibileInail: Number(imponibileInail) || 0,
+        oreRetribuite: Number(oreRetribuite) || 0,
+        costoOrarioReale: calculations.costoOrario,
         uploadDate: new Date().toISOString(),
         uploadedAt: new Date().toISOString(),
         acceptedDate: null,
@@ -121,6 +155,7 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
       setCompetenzeLorde('');
       setImponibileInps('');
       setImponibileInail('');
+      setOreRetribuite('');
       setFile(null);
     } catch (error: any) {
       alert("Errore salvataggio: " + error.message);
@@ -143,9 +178,22 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
 
   return (
     <div className="space-y-8">
+      {showHoursAlert && (
+        <Card className="p-4 bg-amber-50 border-amber-200 flex items-start gap-4 animate-in slide-in-from-top-2">
+          <ClockAlert className="text-amber-600 shrink-0" size={24} />
+          <div>
+            <h4 className="font-bold text-amber-900">Alert Coerenza Ore</h4>
+            <p className="text-sm text-amber-800">
+              Le ore in busta paga ({oreRetribuite}h) differiscono significativamente dalle timbrature registrate ({appHoursForMonth.toFixed(2)}h). 
+              Verificare i dati prima di procedere per garantire un'analisi dei costi corretta.
+            </p>
+          </div>
+        </Card>
+      )}
+
       <Card className="p-6">
         <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-          <Upload className="text-blue-600" /> Archivia Busta Paga
+          <Upload className="text-blue-600" /> Caricamento LUL & Calcolo Costi
         </h3>
         
         <form onSubmit={handleUpload} className="space-y-6">
@@ -189,36 +237,43 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
           </div>
 
           <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Calculator size={14} /> Dati LUL per Analisi Costi
-            </h4>
+            <div className="flex justify-between items-center mb-4">
+               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <Calculator size={14} /> Dati LUL (Libro Unico del Lavoro)
+              </h4>
+              {selectedUser && (
+                <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                  Ore App: {appHoursForMonth.toFixed(2)}h
+                </div>
+              )}
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Input label="1. Compenso Lordo (€)" type="number" value={competenzeLorde} onChange={e => setCompetenzeLorde(e.target.value)} placeholder="Da busta paga" required />
-              <Input label="Imponibile INPS (€)" type="number" value={imponibileInps} onChange={e => setImponibileInps(e.target.value)} placeholder="Per stima contributi" required />
-              <Input label="Imponibile INAIL (€)" type="number" value={imponibileInail} onChange={e => setImponibileInail(e.target.value)} placeholder="Per stima premi" required />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Input label="Lordo (€)" type="number" value={competenzeLorde} onChange={e => setCompetenzeLorde(e.target.value)} placeholder="Compenso Lordo" required />
+              <Input label="Imponibile INPS (€)" type="number" value={imponibileInps} onChange={e => setImponibileInps(e.target.value)} placeholder="Per INPS e Cassa" required />
+              <Input label="Imponibile INAIL (€)" type="number" value={imponibileInail} onChange={e => setImponibileInail(e.target.value)} placeholder="Per Premio INAIL" required />
+              <Input label="Ore Retribuite (LUL)" type="number" value={oreRetribuite} onChange={e => setOreRetribuite(e.target.value)} placeholder="Ore totali busta" required />
             </div>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex justify-between items-center">
-                <span className="text-xs font-bold text-blue-700 uppercase">2. Costo Cassa Edile (Ditta)</span>
-                <span className="font-mono font-bold text-blue-800">€ {estimations.cassaEdile.toFixed(2)}</span>
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col justify-center">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Cassa Edile (Ditta)</span>
+                <span className="font-mono font-bold text-slate-700 text-lg">€ {calculations.cassaEdile.toFixed(2)}</span>
               </div>
-              <div className="p-3 bg-green-50 rounded-xl border border-green-100 flex justify-between items-center">
-                <span className="text-xs font-bold text-green-700 uppercase">3. Altri Costi (INPS/INAIL/TFR)</span>
-                <span className="font-mono font-bold text-green-800">€ {estimations.altriCosti.toFixed(2)}</span>
+              <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col justify-center">
+                <span className="text-[9px] font-bold text-slate-400 uppercase">Oneri Riflessi & TFR</span>
+                <span className="font-mono font-bold text-slate-700 text-lg">€ {calculations.altriCosti.toFixed(2)}</span>
+              </div>
+              <div className="p-3 bg-blue-600 rounded-xl border border-blue-700 flex flex-col justify-center text-white">
+                <span className="text-[9px] font-bold text-blue-100 uppercase">Costo Orario Reale</span>
+                <span className="font-mono font-bold text-2xl">€ {calculations.costoOrario.toFixed(2)}/h</span>
               </div>
             </div>
-            {!companyParams && (
-              <p className="mt-3 text-[10px] text-amber-600 flex items-center gap-1 font-bold">
-                <Info size={12}/> Configura i parametri costo in 'Opzioni' per vedere le stime automatiche.
-              </p>
-            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-slate-700">File PDF Busta Paga</label>
+              <label className="text-sm font-semibold text-slate-700">File PDF Cedolino</label>
               <input 
                 type="file" 
                 accept="application/pdf"
@@ -228,7 +283,7 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
               />
             </div>
             <Button type="submit" disabled={isUploading} className="w-full h-11">
-              {isUploading ? "Archiviazione..." : "Archivia Busta Paga e Costi"}
+              {isUploading ? "Salvataggio..." : "Archivia Busta Paga e Costi"}
             </Button>
           </div>
         </form>
@@ -236,7 +291,7 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
 
       <div className="space-y-4">
         <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          <FileText className="text-blue-600" /> Storico Buste Paga
+          <FileText className="text-blue-600" /> Registro Storico Costi
         </h3>
 
         <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -245,8 +300,8 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="p-4 font-bold text-slate-600">Dipendente</th>
                 <th className="p-4 font-bold text-slate-600">Mese</th>
-                <th className="p-4 font-bold text-slate-600">Lordo</th>
-                <th className="p-4 font-bold text-slate-600">Stato</th>
+                <th className="p-4 font-bold text-slate-600 text-center">Ore LUL/App</th>
+                <th className="p-4 font-bold text-slate-600">Costo Orario</th>
                 <th className="p-4 font-bold text-slate-600 text-right">Azioni</th>
               </tr>
             </thead>
@@ -255,12 +310,10 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
                 <tr key={ps.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                   <td className="p-4 font-semibold text-slate-700">{ps.userName}</td>
                   <td className="p-4 font-mono text-slate-600">{ps.month}</td>
-                  <td className="p-4 font-mono">€ {ps.competenzeLorde?.toFixed(2)}</td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${ps.status === 'Accettata' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {ps.status}
-                    </span>
+                  <td className="p-4 text-center">
+                    <span className="text-[10px] font-bold text-slate-500">{ps.oreRetribuite}h</span>
                   </td>
+                  <td className="p-4 font-bold text-blue-600">€ {ps.costoOrarioReale?.toFixed(2)}/h</td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => openPdf(ps.fileData)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"><FileText size={16} /></button>

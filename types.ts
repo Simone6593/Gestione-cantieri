@@ -21,7 +21,7 @@ export interface Company {
   email: string;
   logoUrl?: string;
   primaryColor: string;
-  costParameters?: CostParameters; // Nuovi parametri per analisi costi
+  costParameters?: CostParameters; // Parametri per analisi costi
 }
 
 export interface User {
@@ -52,6 +52,8 @@ export interface PaySlip {
   competenzeLorde?: number;
   imponibileInps?: number;
   imponibileInail?: number;
+  oreRetribuite?: number; // Ore indicate nel cedolino
+  costoOrarioReale?: number; // Calcolato al momento del caricamento
 }
 
 export interface Site {
