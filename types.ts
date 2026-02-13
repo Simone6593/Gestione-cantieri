@@ -74,7 +74,7 @@ export interface MaterialCost {
   supplier: string;
   invoiceNumber: string;
   date: string;
-  siteIds: string[]; // Supporto scelta multipla
+  siteIds: string[]; 
   siteNames: string[];
   taxableAmount: number;
   timestamp: string;

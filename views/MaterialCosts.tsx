@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { Site, MaterialCost, User } from '../types';
-import { ShoppingCart, Plus, X, Download, Trash2, Calendar, Building2, Hash, Euro, Search, Check, ChevronDown } from 'lucide-react';
+import { ShoppingCart, Plus, X, Download, Trash2, Calendar, Building2, Hash, Search, Check, ChevronDown } from 'lucide-react';
 
 interface MaterialCostsProps {
   currentUser: User;
@@ -15,7 +15,7 @@ interface MaterialCostsProps {
 const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs, onAddCost, onRemoveCost }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7)); 
   
   const [formData, setFormData] = useState({
     supplier: '',
@@ -80,29 +80,30 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
   };
 
   const downloadExcel = (empty: boolean = false) => {
-    const headers = ["Fornitore", "N. Fattura", "Data", "Cantieri", "Imponibile (€)"];
-    let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+    // Esportazione in formato CSV (compatibile Excel)
+    const headers = ["Fornitore", "N. Fattura", "Data", "Cantieri Associati", "Imponibile (EUR)"];
+    let csvContent = "data:text/csv;charset=utf-8," + headers.join(";") + "\n";
 
     if (!empty) {
       filteredCosts.forEach(c => {
         const row = [
-          `"${c.supplier}"`,
-          `"${c.invoiceNumber}"`,
+          `"${c.supplier.replace(/"/g, '""')}"`,
+          `"${c.invoiceNumber.replace(/"/g, '""')}"`,
           c.date,
-          `"${c.siteNames.join('; ')}"`,
-          c.taxableAmount.toFixed(2)
+          `"${c.siteNames.join(', ')}"`,
+          c.taxableAmount.toFixed(2).replace('.', ',')
         ];
-        csvContent += row.join(",") + "\n";
+        csvContent += row.join(";") + "\n";
       } );
     } else {
-      // Add a few empty rows for the template
-      for(let i=0; i<5; i++) csvContent += ",,,,\n";
+      // Template vuoto con esempi
+      csvContent += "Fornitore Esempio;FT-001;2024-01-01;Cantiere A, Cantiere B;1000,00\n";
     }
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", empty ? "Template_Costi_Materiali.csv" : `Report_Costi_${filterMonth}.csv`);
+    link.setAttribute("download", empty ? "Template_Spese_Materiali.csv" : `Report_Spese_${filterMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -113,10 +114,10 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Costi Materiali</h2>
-          <p className="text-sm text-slate-500">Gestione fatture e scontrini fornitori.</p>
+          <p className="text-sm text-slate-500">Gestione fatture fornitori e suddivisione per cantiere.</p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <Button variant="secondary" onClick={() => downloadExcel(true)} title="Scarica template vuoto">
+          <Button variant="secondary" onClick={() => downloadExcel(true)} title="Scarica template excel vuoto">
              <Download size={18} /> Template
           </Button>
           <Button onClick={() => setIsAdding(true)}>
@@ -126,12 +127,12 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
       </div>
 
       {isAdding && (
-        <Card className="p-6 border-blue-200 bg-blue-50/50 shadow-lg animate-in slide-in-from-top-4">
+        <Card className="p-6 border-blue-200 bg-blue-50 animate-in slide-in-from-top-4 shadow-xl">
           <div className="flex justify-between items-center mb-6 pb-4 border-b border-blue-100">
             <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-              <ShoppingCart size={20} /> Nuova Registrazione Spesa
+              <ShoppingCart size={20} /> Registra Nuova Fattura
             </h3>
-            <button onClick={() => setIsAdding(false)} className="text-blue-400 p-1 hover:bg-blue-100 rounded-full transition-colors">
+            <button onClick={() => setIsAdding(false)} className="text-blue-400 p-1 hover:bg-blue-100 rounded-full">
               <X size={24} />
             </button>
           </div>
@@ -142,14 +143,14 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
                 label="Fornitore *" 
                 value={formData.supplier} 
                 onChange={e => setFormData({...formData, supplier: e.target.value})} 
-                placeholder="es. Leroy Merlin"
+                placeholder="Nome fornitore..."
                 required 
               />
               <Input 
-                label="N. Fattura / Scontrino" 
+                label="N. Fattura / Documento" 
                 value={formData.invoiceNumber} 
                 onChange={e => setFormData({...formData, invoiceNumber: e.target.value})} 
-                placeholder="es. FT-2024-001"
+                placeholder="es. 123/2024"
               />
               <Input 
                 label="Data *" 
@@ -170,9 +171,9 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Building2 size={16} className="text-blue-500" /> Cantieri Associati * (Scelta Multipla)
+                <Building2 size={16} className="text-blue-500" /> Cantieri a cui addebitare la spesa *
               </label>
-              <div className="flex flex-wrap gap-2 p-4 bg-white rounded-xl border border-slate-200">
+              <div className="flex flex-wrap gap-2 p-4 bg-white rounded-xl border border-slate-200 shadow-inner min-h-[60px]">
                 {activeSites.map(site => (
                   <button
                     key={site.id}
@@ -188,13 +189,14 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
                     {site.client}
                   </button>
                 ))}
-                {activeSites.length === 0 && <p className="text-xs text-slate-400 italic">Nessun cantiere attivo trovato.</p>}
+                {activeSites.length === 0 && <p className="text-xs text-slate-400">Nessun cantiere attivo.</p>}
               </div>
+              <p className="text-[10px] text-slate-400 font-medium">Nota: Se selezioni più cantieri, la spesa verrà divisa in parti uguali tra loro.</p>
             </div>
 
             <div className="flex gap-3 justify-end pt-4 border-t border-blue-100">
               <Button variant="ghost" onClick={() => setIsAdding(false)}>Annulla</Button>
-              <Button type="submit" className="px-8 shadow-md">Registra Spesa</Button>
+              <Button type="submit" className="px-8 shadow-md">Salva Spesa</Button>
             </div>
           </form>
         </Card>
@@ -206,10 +208,10 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text" 
-              placeholder="Cerca fornitore o fattura..." 
+              placeholder="Cerca fornitore o n. fattura..." 
               value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
           <div className="flex items-center gap-3 w-full md:w-auto">
@@ -217,83 +219,72 @@ const MaterialCosts: React.FC<MaterialCostsProps> = ({ currentUser, sites, costs
                 type="month" 
                 value={filterMonth} 
                 onChange={e => setFilterMonth(e.target.value)}
-                className="flex-1 md:w-48 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none"
              />
              <Button variant="secondary" onClick={() => downloadExcel()} disabled={filteredCosts.length === 0}>
-                <Download size={18} /> Esporta Excel
+                <Download size={18} /> Esporta Report
              </Button>
           </div>
         </div>
       </Card>
 
-      <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm">
-        <table className="w-full text-left text-sm border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-              <th className="p-4">Fornitore</th>
-              <th className="p-4">N. Fattura</th>
-              <th className="p-4">Data</th>
-              <th className="p-4">Cantieri</th>
-              <th className="p-4 text-right">Imponibile</th>
-              <th className="p-4 text-center w-20">Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredCosts.map(cost => (
-              <tr key={cost.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors group">
-                <td className="p-4">
-                  <div className="font-bold text-slate-800">{cost.supplier}</div>
-                </td>
-                <td className="p-4">
-                  <div className="flex items-center gap-1.5 text-slate-500 font-mono">
-                    <Hash size={14} className="text-slate-300" /> {cost.invoiceNumber || '---'}
-                  </div>
-                </td>
-                <td className="p-4">
-                  <div className="flex items-center gap-1.5 text-slate-600">
-                    <Calendar size={14} className="text-slate-300" /> 
-                    {new Date(cost.date).toLocaleDateString('it-IT')}
-                  </div>
-                </td>
-                <td className="p-4">
-                  <div className="flex flex-wrap gap-1">
-                    {cost.siteNames.map((name, i) => (
-                      <span key={i} className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-100">
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="p-4 text-right">
-                  <div className="font-mono font-bold text-slate-800 text-base">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                <th className="p-4">Fornitore</th>
+                <th className="p-4">N. Fattura</th>
+                <th className="p-4">Data</th>
+                <th className="p-4">Destinazione</th>
+                <th className="p-4 text-right">Imponibile</th>
+                <th className="p-4 text-center">Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCosts.map(cost => (
+                <tr key={cost.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="p-4 font-bold text-slate-800">{cost.supplier}</td>
+                  <td className="p-4 font-mono text-slate-500">{cost.invoiceNumber || '---'}</td>
+                  <td className="p-4 text-slate-600">{new Date(cost.date).toLocaleDateString('it-IT')}</td>
+                  <td className="p-4">
+                    <div className="flex flex-wrap gap-1">
+                      {cost.siteNames.map((name, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-100">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="p-4 text-right font-mono font-bold text-slate-700">
                     € {cost.taxableAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </div>
-                </td>
-                <td className="p-4 text-center">
-                  <button 
-                    onClick={() => confirm("Eliminare questa spesa?") && onRemoveCost(cost.id)}
-                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {filteredCosts.length > 0 && (
-              <tr className="bg-slate-900 text-white font-bold">
-                <td colSpan={4} className="p-4 text-right uppercase text-[10px] tracking-widest">Totale Mensile</td>
-                <td className="p-4 text-right font-mono text-lg">
-                  € {filteredCosts.reduce((sum, c) => sum + c.taxableAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </td>
-                <td></td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button 
+                      onClick={() => confirm("Eliminare questa spesa?") && onRemoveCost(cost.id)}
+                      className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredCosts.length > 0 && (
+                <tr className="bg-slate-900 text-white font-bold">
+                  <td colSpan={4} className="p-4 text-right uppercase text-[10px] tracking-widest">Totale Mensile Selezionato</td>
+                  <td className="p-4 text-right font-mono text-lg">
+                    € {filteredCosts.reduce((sum, c) => sum + c.taxableAmount, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </td>
+                  <td></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
         {filteredCosts.length === 0 && (
           <div className="py-20 text-center text-slate-400">
             <ShoppingCart size={40} className="mx-auto mb-3 opacity-20" />
-            <p className="font-bold">Nessuna spesa trovata per questo mese.</p>
+            <p className="font-bold">Nessun costo registrato per questo periodo.</p>
           </div>
         )}
       </div>

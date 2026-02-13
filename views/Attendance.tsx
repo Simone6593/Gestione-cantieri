@@ -15,6 +15,14 @@ interface AttendanceProps {
   onGoToReport: () => void;
 }
 
+const getLocalDateString = (dateInput?: string | Date) => {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const Attendance: React.FC<AttendanceProps> = ({ 
   user, 
   sites, 
@@ -28,7 +36,7 @@ const Attendance: React.FC<AttendanceProps> = ({
   const [currentCoords, setCurrentCoords] = useState<{ lat: number, lng: number } | null>(null);
   const [promptState, setPromptState] = useState<'none' | 'confirm_simple' | 'ask_delegate' | 'force_report'>('none');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   
   const assignedSiteId = useMemo(() => {
     const todaySchedule = schedules[todayStr];
@@ -54,22 +62,20 @@ const Attendance: React.FC<AttendanceProps> = ({
   const handleClockOutAttempt = () => {
     if (!activeRecord || !currentCoords) return;
 
-    // 1. Verifica se il rapportino è già stato fatto per questo cantiere oggi
-    const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === todayStr);
+    // Controllo basato sulla data di INIZIO del turno
+    const shiftDate = getLocalDateString(activeRecord.startTime);
+    const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === shiftDate);
     
     if (reportExists) {
       setPromptState('confirm_simple');
       return;
     }
 
-    // 2. Conta quanti operai sono attivi in questo cantiere
     const workersStillIn = attendance.filter(a => !a.endTime && a.siteId === activeRecord.siteId);
 
     if (workersStillIn.length > 1) {
-      // Ci sono altri colleghi: richiesta facoltativa/delega
       setPromptState('ask_delegate');
     } else {
-      // È l'ultimo: obbligo rapportino
       setPromptState('force_report');
     }
   };
@@ -126,13 +132,12 @@ const Attendance: React.FC<AttendanceProps> = ({
             
             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               <MapPin size={14} className={currentCoords ? "text-green-500" : "text-slate-300"} />
-              {currentCoords ? `GPS ATTIVO: ${currentCoords.lat.toFixed(4)}, ${currentCoords.lng.toFixed(4)}` : "Rilevamento posizione..."}
+              {currentCoords ? `GPS ATTIVO` : "Rilevamento posizione..."}
             </div>
           </div>
         </div>
       </Card>
 
-      {/* SISTEMA DI POP-UP MODALI (CENTERED) */}
       {promptState !== 'none' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <Card className="w-full max-w-md p-6 relative animate-in zoom-in duration-300 overflow-visible">
@@ -147,7 +152,7 @@ const Attendance: React.FC<AttendanceProps> = ({
                 </div>
                 <h3 className="text-xl font-bold text-slate-800">Confermi l'uscita?</h3>
                 <p className="text-sm text-slate-500 mt-2 mb-6">
-                  Il rapportino giornaliero per questo cantiere è già stato inviato correttamente da un tuo collega.
+                  Il rapportino giornaliero per questo cantiere è già stato inviato correttamente.
                 </p>
                 <div className="space-y-2">
                   <Button onClick={executeClockOut} className="w-full h-12">Si, Timbra Uscita</Button>
@@ -166,13 +171,8 @@ const Attendance: React.FC<AttendanceProps> = ({
                   Nessuno ha ancora inviato il rapporto di oggi. Vuoi compilarlo tu o lo lasci fare ai colleghi che restano?
                 </p>
                 <div className="space-y-3">
-                  <Button onClick={onGoToReport} className="w-full h-12 bg-amber-600">
-                    Sì, lo compilo ora
-                  </Button>
-                  <Button variant="secondary" onClick={executeClockOut} className="w-full h-12">
-                    Delego ai colleghi ed Esco
-                  </Button>
-                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Torna Indietro</Button>
+                  <Button onClick={onGoToReport} className="w-full h-12 bg-amber-600">Sì, lo compilo ora</Button>
+                  <Button variant="secondary" onClick={executeClockOut} className="w-full h-12">Delego ai colleghi ed Esco</Button>
                 </div>
               </div>
             )}
@@ -190,41 +190,12 @@ const Attendance: React.FC<AttendanceProps> = ({
                   <Button onClick={onGoToReport} className="w-full h-12 bg-red-600">
                     Vai al Rapportino <ChevronRight size={18} />
                   </Button>
-                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Annulla</Button>
                 </div>
               </div>
             )}
           </Card>
         </div>
       )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
-        <Card className="p-6">
-          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 uppercase text-[10px] tracking-widest text-slate-400">
-            <Clock size={16} /> Movimenti Odierni
-          </h3>
-          <div className="space-y-3">
-            {attendance.filter(a => a.userId === user.id && a.startTime.includes(todayStr)).map(record => (
-              <div key={record.id} className="flex justify-between items-center text-sm bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <div>
-                  <p className="font-bold text-slate-700">{record.siteName}</p>
-                  <p className="text-[10px] text-slate-500">INGRESSO: {new Date(record.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                </div>
-                <div className="text-right">
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${record.endTime ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-green-700'}`}>
-                    {record.endTime ? 'Chiuso' : 'In Corso'}
-                  </span>
-                  {record.endTime && (
-                    <p className="text-slate-400 text-[9px] mt-1 font-bold">
-                      USCITA: {new Date(record.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
     </div>
   );
 };

@@ -7,13 +7,22 @@ import { Camera, Send, Plus, Users, Clipboard, X, MapPin, Check, ChevronDown, Im
 interface DailyReportFormProps {
   user: User;
   activeSite?: Site;
-  sites: Site[]; // Aggiunto per permettere la selezione manuale
+  sites: Site[]; 
   allWorkers: User[];
   schedules: Record<string, DailySchedule>;
   onSubmit: (report: Partial<DailyReport>) => void;
+  referenceDate?: string; // Aggiunta prop per risolvere errore TS in App.tsx
 }
 
-const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sites, allWorkers, schedules, onSubmit }) => {
+const getLocalDateString = (dateInput?: string | Date) => {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sites, allWorkers, schedules, onSubmit, referenceDate }) => {
   const [selectedSiteId, setSelectedSiteId] = useState(activeSite?.id || '');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -22,7 +31,8 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
   const [currentCoords, setCurrentCoords] = useState<{ lat: number, lng: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Data di riferimento basata sull'inizio del turno per coerenza con la timbratura
+  const reportDateStr = referenceDate || getLocalDateString();
   const currentSite = sites.find(s => s.id === selectedSiteId);
 
   useEffect(() => {
@@ -33,15 +43,14 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
       );
     }
 
-    // Seleziona automaticamente i lavoratori assegnati al cantiere scelto
-    if (selectedSiteId && schedules[todayStr]) {
-      const assignedIds = (schedules[todayStr].siteAssignments[selectedSiteId] || []) as string[];
+    if (selectedSiteId && schedules[reportDateStr]) {
+      const assignedIds = (schedules[reportDateStr].siteAssignments[selectedSiteId] || []) as string[];
       const initialSelection = assignedIds.includes(user.id) ? assignedIds : [...assignedIds, user.id];
       setSelectedWorkers(initialSelection);
     } else {
       setSelectedWorkers([user.id]);
     }
-  }, [selectedSiteId, schedules, todayStr, user.id]);
+  }, [selectedSiteId, schedules, reportDateStr, user.id]);
 
   const toggleWorker = (id: string) => {
     setSelectedWorkers(prev => 
@@ -83,7 +92,7 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
       compilerName: `${user.firstName} ${user.lastName}`,
       workerIds: selectedWorkers,
       workerNames: workerNames,
-      date: todayStr,
+      date: reportDateStr,
       description,
       notes,
       photoUrls: photoUrls,
@@ -101,14 +110,25 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
           </div>
           <div className="flex-1">
             <h2 className="text-xl font-bold text-slate-800">Compilazione Rapporto</h2>
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mt-1">
+              Riferimento Data: <span className="text-blue-600">{new Date(reportDateStr).toLocaleDateString('it-IT')}</span>
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-slate-700">Cantiere</label>
             {activeSite ? (
-              <p className="text-sm text-slate-500 font-medium">Cantiere: <span className="text-blue-600">{activeSite.client}</span></p>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-800">
+                {activeSite.client}
+              </div>
             ) : (
-              <div className="relative mt-1">
+              <div className="relative">
                 <select 
                   value={selectedSiteId} 
                   onChange={e => setSelectedSiteId(e.target.value)}
-                  className="w-full pl-3 pr-10 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-blue-600 outline-none appearance-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-blue-600 outline-none appearance-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Seleziona cantiere...</option>
                   {sites.filter(s => s.isActive).map(s => <option key={s.id} value={s.id}>{s.client}</option>)}
@@ -117,12 +137,10 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
               </div>
             )}
           </div>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-3">
             <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <Users size={16} className="text-blue-500" /> Personale Presente Oggi
+              <Users size={16} className="text-blue-500" /> Personale Presente
             </label>
             <div className="flex flex-wrap gap-2">
               {allWorkers.map(worker => (
@@ -161,7 +179,7 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Eventuali intoppi, materiali mancanti o richieste..."
+              placeholder="Eventuali intoppi, materiali mancanti..."
               className="w-full h-20 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none text-sm"
             />
           </div>
@@ -169,7 +187,7 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
           <div className="space-y-1.5">
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <ImageIcon size={16} className="text-blue-500" /> Foto del lavoro
+                <ImageIcon size={16} className="text-blue-500" /> Foto Documentazione
               </label>
               <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-0.5 rounded border border-red-100 italic">
                 * Almeno 1 foto obbligatoria
@@ -204,7 +222,7 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
           <div className="flex flex-col gap-4 pt-4 border-t border-slate-100">
             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
               <MapPin size={12} className={currentCoords ? "text-green-500" : "text-slate-300"} />
-              {currentCoords ? `GPS OK: Posizione acquisita` : "Rilevamento posizione..."}
+              {currentCoords ? `GPS OK` : "Rilevamento posizione..."}
             </div>
             
             <Button 
@@ -213,20 +231,8 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
               disabled={photoUrls.length === 0}
             >
               <Send size={18} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-              Invia Rapporto e Chiudi Turno
+              Invia e Chiudi Turno
             </Button>
-            
-            {photoUrls.length === 0 && (
-              <p className="text-center text-[10px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">
-                ⚠️ Carica almeno una foto del lavoro per poter terminare la giornata.
-              </p>
-            )}
-            
-            {activeSite && photoUrls.length > 0 && (
-              <p className="text-center text-[10px] text-amber-600 font-bold uppercase tracking-wider">
-                L'invio confermerà automaticamente la tua uscita da {activeSite.client}.
-              </p>
-            )}
           </div>
         </form>
       </Card>
