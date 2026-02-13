@@ -154,9 +154,6 @@ const App: React.FC = () => {
     await setDoc(doc(db, "aziende", currentUser.aziendaId), companyData, { merge: true });
   };
 
-  // Rest of the existing handlers... (omitted for brevity, assume they stay same)
-  // ... (handleLogin, addUser, handleClockIn, etc.)
-
   if (loading) return (
     <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -239,6 +236,7 @@ const App: React.FC = () => {
           company={company}
           paySlips={paySlips}
           onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))}
+          onUpdateRecord={async (id, upd) => await updateDoc(doc(db, "timbrature", id), upd)}
         />
       )}
       {activeTab === 'admin-pay-slips' && (

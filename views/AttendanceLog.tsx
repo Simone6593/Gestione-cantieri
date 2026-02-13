@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
-import { Card, Button } from '../components/Shared';
+import { Card, Button, Input } from '../components/Shared';
 import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company } from '../types';
-import { Clock, MapPin, Calendar, ClipboardCheck, Trash2, Search, CheckCircle2, Filter, X, FileDown, Calculator, Info } from 'lucide-react';
+import { Clock, MapPin, Calendar, ClipboardCheck, Trash2, Search, CheckCircle2, Filter, X, FileDown, Calculator, Info, Edit2, Save } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -10,16 +10,19 @@ interface AttendanceLogProps {
   reports: DailyReport[];
   sites: Site[];
   onRemoveRecord: (id: string) => void;
+  onUpdateRecord: (id: string, updates: Partial<AttendanceRecord>) => void;
   company?: Company;
   paySlips?: PaySlip[];
 }
 
 const AttendanceLog: React.FC<AttendanceLogProps> = ({ 
-  currentUser, attendance, reports, sites, onRemoveRecord, company, paySlips = [] 
+  currentUser, attendance, reports, sites, onRemoveRecord, onUpdateRecord, company, paySlips = [] 
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [showCostAnalysis, setShowCostAnalysis] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<{ startTime: string, endTime: string }>({ startTime: '', endTime: '' });
   
   const canEdit = currentUser.role === UserRole.ADMIN;
 
@@ -49,7 +52,6 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
     return (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60);
   };
 
-  // Logica di calcolo costo reale storicizzato
   const costAnalysis = useMemo(() => {
     const analysisMap: Record<string, { totalHours: number, realHourlyRate: number, totalRealCost: number }> = {};
 
@@ -61,7 +63,6 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
       const recordYear = recordDate.getFullYear();
       const monthKey = `${recordMonth.toString().padStart(2, '0')}/${recordYear}`;
       
-      // Cerchiamo la busta paga che contiene già il costo orario reale CALCOLATO al momento dell'upload
       const ps = paySlips.find(p => p.userId === record.userId && p.month === monthKey);
       
       if (ps && ps.costoOrarioReale) {
@@ -78,14 +79,32 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
 
   const renderGpsIndicator = (workerCoords?: { lat: number, lng: number }, siteId?: string) => {
     if (!workerCoords) return <div className="w-3 h-3 rounded-full bg-slate-300" />;
-    const site = sites.find(s => s.id === siteId);
-    if (!site || !site.coords) return <div className="w-3 h-3 rounded-full bg-slate-300" />;
-    
-    // Semplice check distanza se necessario (omesso per brevità qui)
     return <CheckCircle2 size={12} className="text-green-500" />;
   };
 
   const formatTime = (isoString?: string) => isoString ? new Date(isoString).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '---';
+
+  const startEditing = (record: AttendanceRecord) => {
+    setEditingId(record.id);
+    setEditData({
+      startTime: record.startTime.slice(0, 16), // Format for datetime-local
+      endTime: record.endTime ? record.endTime.slice(0, 16) : ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return;
+    try {
+      const updates: Partial<AttendanceRecord> = {
+        startTime: new Date(editData.startTime).toISOString(),
+        endTime: editData.endTime ? new Date(editData.endTime).toISOString() : undefined
+      };
+      await onUpdateRecord(editingId, updates);
+      setEditingId(null);
+    } catch (e) {
+      alert("Errore durante l'aggiornamento della timbratura.");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -138,9 +157,10 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
           const report = getLinkedReport(record);
           const hours = calculateHours(record.startTime, record.endTime);
           const analysis = costAnalysis ? costAnalysis[record.id] : null;
+          const isEditing = editingId === record.id;
           
           return (
-            <Card key={record.id} className="p-4 bg-white hover:border-blue-200 transition-all border-l-4 border-l-blue-600">
+            <Card key={record.id} className={`p-4 bg-white hover:border-blue-200 transition-all border-l-4 ${isEditing ? 'border-l-amber-500 bg-amber-50/30' : 'border-l-blue-600'}`}>
               <div className="flex flex-col lg:flex-row gap-6">
                 <div className="lg:w-1/4">
                   <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase mb-1">
@@ -167,39 +187,84 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
                     </div>
                   )}
 
-                  {canEdit && (
-                    <button 
-                      onClick={() => confirm("Eliminare questa timbratura?") && onRemoveRecord(record.id)}
-                      className="mt-4 text-[10px] text-red-500 uppercase font-bold tracking-widest hover:underline"
-                    >
-                      Elimina Record
-                    </button>
+                  {canEdit && !isEditing && (
+                    <div className="mt-4 flex gap-3">
+                      <button 
+                        onClick={() => startEditing(record)}
+                        className="text-[10px] text-blue-600 uppercase font-bold tracking-widest hover:underline flex items-center gap-1"
+                      >
+                        <Edit2 size={12} /> Modifica
+                      </button>
+                      <button 
+                        onClick={() => confirm("Eliminare questa timbratura?") && onRemoveRecord(record.id)}
+                        className="text-[10px] text-red-500 uppercase font-bold tracking-widest hover:underline flex items-center gap-1"
+                      >
+                        <Trash2 size={12} /> Elimina
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className={`space-y-1 p-3 rounded-lg border transition-colors ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
                       <span>Inizio (Clock-In)</span>
-                      {renderGpsIndicator(record.startCoords, record.siteId)}
+                      {!isEditing && renderGpsIndicator(record.startCoords, record.siteId)}
                     </div>
-                    <div className="text-lg font-bold text-slate-800">{formatTime(record.startTime)}</div>
+                    {isEditing ? (
+                      <input 
+                        type="datetime-local" 
+                        value={editData.startTime}
+                        onChange={e => setEditData({...editData, startTime: e.target.value})}
+                        className="w-full text-sm font-bold bg-transparent outline-none text-slate-800"
+                      />
+                    ) : (
+                      <div className="text-lg font-bold text-slate-800">{formatTime(record.startTime)}</div>
+                    )}
                   </div>
 
-                  <div className={`space-y-1 p-3 rounded-lg border ${record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100'}`}>
+                  <div className={`space-y-1 p-3 rounded-lg border transition-colors ${isEditing ? 'bg-white border-amber-200 ring-2 ring-amber-100' : (record.endTime ? 'bg-slate-50 border-slate-100' : 'bg-amber-50 border-amber-100')}`}>
                     <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
                       <span>Fine (Clock-Out)</span>
-                      {renderGpsIndicator(record.endCoords, record.siteId)}
+                      {!isEditing && renderGpsIndicator(record.endCoords, record.siteId)}
                     </div>
-                    <div className="text-lg font-bold text-slate-800">{formatTime(record.endTime)}</div>
+                    {isEditing ? (
+                      <input 
+                        type="datetime-local" 
+                        value={editData.endTime}
+                        onChange={e => setEditData({...editData, endTime: e.target.value})}
+                        className="w-full text-sm font-bold bg-transparent outline-none text-slate-800"
+                      />
+                    ) : (
+                      <div className="text-lg font-bold text-slate-800">{formatTime(record.endTime)}</div>
+                    )}
                   </div>
 
-                  <div className={`space-y-1 p-3 rounded-lg border ${report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
-                      <span>Rapportino</span>
-                      {renderGpsIndicator(report?.coords, record.siteId)}
-                    </div>
-                    <div className="text-lg font-bold text-slate-800">{report ? formatTime(report.timestamp) : '---'}</div>
+                  <div className={`space-y-1 p-3 rounded-lg border transition-all ${isEditing ? 'flex items-center justify-center bg-amber-500 text-white border-amber-600' : (report ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-100 opacity-60')}`}>
+                    {isEditing ? (
+                      <div className="flex gap-2 w-full">
+                        <button 
+                          onClick={handleSaveEdit}
+                          className="flex-1 bg-white text-amber-600 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 shadow-sm hover:bg-amber-50"
+                        >
+                          <Save size={14} /> Salva
+                        </button>
+                        <button 
+                          onClick={() => setEditingId(null)}
+                          className="flex-1 bg-amber-600 text-white py-2 rounded-lg font-bold text-xs border border-amber-400 hover:bg-amber-700"
+                        >
+                          Annulla
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                          <span>Rapportino</span>
+                          {renderGpsIndicator(report?.coords, record.siteId)}
+                        </div>
+                        <div className="text-lg font-bold text-slate-800">{report ? formatTime(report.timestamp) : '---'}</div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
