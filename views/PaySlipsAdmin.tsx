@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { User, UserRole, PaySlip } from '../types';
 import { db, storage } from '../firebase';
-import { collection, addDoc, query, where, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Upload, FileText, CheckCircle, Clock, Trash2, Calendar, User as UserIcon } from 'lucide-react';
 
@@ -22,14 +22,17 @@ const PaySlipsAdmin: React.FC<PaySlipsAdminProps> = ({ currentUser, users }) => 
   const workers = users.filter(u => u.role === UserRole.WORKER);
 
   useEffect(() => {
+    // Rimuoviamo l'orderBy dalla query Firestore per evitare la necessità di un indice composto
     const q = query(
       collection(db, 'pay_slips'),
-      where('aziendaId', '==', currentUser.aziendaId),
-      orderBy('uploadDate', 'desc')
+      where('aziendaId', '==', currentUser.aziendaId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setPaySlips(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaySlip)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaySlip));
+      // Ordiniamo lato client per uploadDate decrescente
+      data.sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
+      setPaySlips(data);
     });
 
     return () => unsubscribe();
