@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, ClipboardCheck, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText
+  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ClipboardCheck
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -19,12 +19,11 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
-  // Protezione contro user null o indefinito
   if (!user || !user.role) return null;
 
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
-    { id: 'daily-report', label: 'Rapportino', icon: ClipboardCheck, roles: [UserRole.WORKER, UserRole.SUPERVISOR] }, 
+    // Rapportino rimosso dal menu come richiesto
     { id: 'attendance-log', label: 'Registro Timbrature', icon: ListFilter, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'worker-pay-slips', label: 'Le mie Buste Paga', icon: FileText, roles: [UserRole.WORKER] },
     { id: 'admin-pay-slips', label: 'Gestione Buste Paga', icon: FileText, roles: [UserRole.ADMIN] },
@@ -40,11 +39,10 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
   const getGuide = () => {
     const guides: Record<string, {title: string, steps: string[]}> = {
-      attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "Al termine, clicca 'Fine' e segui le istruzioni per il rapportino."] },
-      'daily-report': { title: "Compilazione Rapportino", steps: ["Seleziona i colleghi presenti con te.", "Descrivi le lavorazioni principali.", "Scatta almeno una foto del lavoro svolto.", "Invia per chiudere la giornata."] },
-      schedule: { title: "Programma Lavori", steps: ["Trascina i nomi dai disponibili ai cantieri.", "Invia il riepilogo al gruppo WhatsApp aziendale."] },
+      attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "Al termine, clicca 'Fine'. Se sei l'ultimo, l'app ti chiederà il rapportino."] },
+      schedule: { title: "Programma Lavori", steps: ["Visualizza dove sei assegnato oggi.", "I supervisori possono spostare gli operai tra i cantieri."] },
     };
-    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Contatta l'admin per permessi aggiuntivi."] };
+    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Le funzionalità dipendono dal tuo ruolo aziendale."] };
   };
 
   return (
@@ -52,12 +50,12 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
       <aside className={`fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 text-white transform transition-transform z-50 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 flex items-center gap-3 border-b border-slate-800">
           {company.logoUrl ? <img src={company.logoUrl} className="w-10 h-10 object-contain bg-white rounded p-1" /> : <div className="w-10 h-10 bg-[var(--primary-color)] rounded-lg flex items-center justify-center font-bold uppercase">{company.name[0]}</div>}
-          <span className="font-bold truncate">{company.name}</span>
+          <span className="font-bold truncate text-sm">{company.name}</span>
         </div>
         <nav className="p-4 space-y-2 flex-1 overflow-y-auto">
           {visibleItems.map(item => (
             <button key={item.id} onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === item.id ? 'bg-[var(--primary-color)] text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <item.icon size={20} /> <span className="font-medium">{item.label}</span>
+              <item.icon size={20} /> <span className="font-medium text-sm">{item.label}</span>
             </button>
           ))}
         </nav>
@@ -70,7 +68,9 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-30">
           <button className="lg:hidden text-slate-600" onClick={() => setSidebarOpen(true)}><Menu size={24} /></button>
-          <h1 className="text-lg font-bold text-slate-800">{navItems.find(i => i.id === activeTab)?.label}</h1>
+          <h1 className="text-lg font-bold text-slate-800">
+            {activeTab === 'daily-report' ? 'Compilazione Rapporto' : (navItems.find(i => i.id === activeTab)?.label || 'Dettaglio')}
+          </h1>
           <button onClick={() => setIsGuideOpen(true)} className="p-2 text-slate-400 hover:text-[var(--primary-color)]"><HelpCircle size={24} /></button>
         </header>
 
