@@ -3,9 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company, PaySlip } from './types';
 import { auth, db } from './firebase';
 // @ts-ignore
-import { initializeApp } from 'firebase/app';
-// @ts-ignore - Bypass type resolution error in specific environment by putting all imports on one line covered by @ts-ignore
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, getAuth, sendPasswordResetEmail, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { 
   collection, 
   doc, 
@@ -14,12 +12,11 @@ import {
   onSnapshot, 
   query, 
   where, 
-  getDocs,
   addDoc, 
   updateDoc, 
   deleteDoc 
 } from 'firebase/firestore';
-import { requestNotificationPermission, notifyReportSubmitted, notifyScheduleChange } from './services/notificationService';
+import { requestNotificationPermission } from './services/notificationService';
 import Layout from './components/Layout';
 import Login from './views/Login';
 import Resources from './views/Resources';
@@ -57,101 +54,94 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setPersistence(auth, browserSessionPersistence).catch(console.error);
-    localStorage.clear();
     requestNotificationPermission();
     
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
-          let userDocRef = doc(db, "team", fbUser.uid);
-          let userDoc = await getDoc(userDocRef);
-          
-          if (!userDoc.exists()) {
-            const newAziendaId = `azienda_${Date.now()}`;
-            const newUserDoc = {
-              id: fbUser.uid,
-              aziendaId: newAziendaId,
-              email: fbUser.email || '',
-              firstName: fbUser.displayName?.split(' ')[0] || 'Nuovo',
-              lastName: fbUser.displayName?.split(' ')[1] || 'Utente',
-              phone: '',
-              role: UserRole.WORKER,
-              isActive: true
-            };
-            await setDoc(userDocRef, newUserDoc);
-            userDoc = await getDoc(userDocRef);
-          }
-
-          const userData = userDoc.data() as User & { isActive?: boolean };
-          
-          if (userData.isActive === false) {
-            await signOut(auth);
+          const userDoc = await getDoc(doc(db, "team", fbUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data() as User & { isActive?: boolean };
+            if (userData.isActive === false) { 
+              await signOut(auth); 
+              setLoading(false);
+              return; 
+            }
+            setCurrentUser({ ...userData, id: fbUser.uid });
+            if (userData.role === UserRole.WORKER) setActiveTab('attendance');
+            else setActiveTab('attendance-log');
+            setupFirestoreListeners(userData.aziendaId);
+          } else {
             setCurrentUser(null);
             setLoading(false);
-            return;
           }
-
-          const fullUser = { ...userData, id: fbUser.uid };
-          setCurrentUser(fullUser);
-          
-          if (userData.role === UserRole.WORKER) setActiveTab('attendance');
-          else setActiveTab('attendance-log');
-          
-          setupFirestoreListeners(userData.aziendaId);
-        } catch (e) {
-          console.error("Error fetching user data", e);
+        } catch (e) { 
+          console.error(e); 
           setLoading(false);
         }
-      } else {
-        setCurrentUser(null);
-        setLoading(false);
+      } else { 
+        setCurrentUser(null); 
+        setLoading(false); 
       }
     });
-
     return () => unsubscribeAuth();
   }, []);
 
   const setupFirestoreListeners = (aziendaId: string) => {
-    setLoading(true);
-
-    onSnapshot(doc(db, "aziende", aziendaId), (doc) => {
-      if (doc.exists()) setCompany({ ...doc.data(), id: doc.id } as Company);
-    });
-
-    onSnapshot(query(collection(db, "team"), where("aziendaId", "==", aziendaId), where("isActive", "==", true)), (snapshot) => {
-      setUsers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as User)));
-    });
-
-    onSnapshot(query(collection(db, "cantieri"), where("aziendaId", "==", aziendaId)), (snapshot) => {
-      setSites(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Site)));
-    });
-
-    onSnapshot(query(collection(db, "reports"), where("aziendaId", "==", aziendaId)), (snapshot) => {
-      setReports(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport)));
-    });
-
-    onSnapshot(query(collection(db, "timbrature"), where("aziendaId", "==", aziendaId)), (snapshot) => {
-      setAttendance(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord)));
-    });
-
-    onSnapshot(query(collection(db, "pay_slips_data"), where("aziendaId", "==", aziendaId)), (snapshot) => {
-      setPaySlips(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as PaySlip)));
-    });
-
-    onSnapshot(query(collection(db, "schedules"), where("aziendaId", "==", aziendaId)), (snapshot) => {
-      const scheduleMap: Record<string, DailySchedule> = {};
-      snapshot.docs.forEach(d => {
-        const data = d.data() as DailySchedule;
-        scheduleMap[data.date] = data;
-      });
-      setSchedules(scheduleMap);
+    onSnapshot(doc(db, "aziende", aziendaId), (d) => d.exists() && setCompany({ ...d.data(), id: d.id } as Company));
+    onSnapshot(query(collection(db, "team"), where("aziendaId", "==", aziendaId), where("isActive", "==", true)), (s) => setUsers(s.docs.map(d => ({ ...d.data(), id: d.id } as User))));
+    onSnapshot(query(collection(db, "cantieri"), where("aziendaId", "==", aziendaId)), (s) => setSites(s.docs.map(d => ({ ...d.data(), id: d.id } as Site))));
+    onSnapshot(query(collection(db, "reports"), where("aziendaId", "==", aziendaId)), (s) => setReports(s.docs.map(d => ({ ...d.data(), id: d.id } as DailyReport))));
+    onSnapshot(query(collection(db, "timbrature"), where("aziendaId", "==", aziendaId)), (s) => setAttendance(s.docs.map(d => ({ ...d.data(), id: d.id } as AttendanceRecord))));
+    onSnapshot(query(collection(db, "pay_slips_data"), where("aziendaId", "==", aziendaId)), (s) => setPaySlips(s.docs.map(d => ({ ...d.data(), id: d.id } as PaySlip))));
+    onSnapshot(query(collection(db, "schedules"), where("aziendaId", "==", aziendaId)), (s) => {
+      const map: Record<string, DailySchedule> = {};
+      s.docs.forEach(d => { map[(d.data() as DailySchedule).date] = d.data() as DailySchedule; });
+      setSchedules(map);
       setLoading(false);
     });
   };
 
-  const handleUpdateCompany = async (companyData: Company) => {
-    if (!currentUser) return;
-    await setDoc(doc(db, "aziende", currentUser.aziendaId), companyData, { merge: true });
+  const handleUpdateAttendanceRecord = async (id: string, updates: Partial<AttendanceRecord>) => {
+    // 1. Aggiorna la timbratura su Firestore
+    await updateDoc(doc(db, "timbrature", id), updates);
+
+    // 2. Recupera i dati necessari per il ricalcolo
+    const record = attendance.find(a => a.id === id);
+    if (!record || !company.costParameters) return;
+
+    const startDate = new Date(updates.startTime || record.startTime);
+    const monthKey = `${(startDate.getMonth() + 1).toString().padStart(2, '0')}/${startDate.getFullYear()}`;
+
+    // 3. Cerca se esiste una busta paga per questo utente e questo mese
+    const ps = paySlips.find(p => p.userId === record.userId && p.month === monthKey);
+    if (!ps) return;
+
+    // 4. Calcola le nuove ore totali del mese per l'utente
+    const monthPrefix = `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, '0')}`;
+    const newTotalHours = attendance
+      .map(a => a.id === id ? { ...a, ...updates } : a) // Considera la modifica appena fatta
+      .filter(a => a.userId === record.userId && a.startTime.includes(monthPrefix) && a.endTime)
+      .reduce((sum, a) => sum + (new Date(a.endTime!).getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60), 0);
+
+    // 5. Ricalcola il Costo Orario Reale (stessa logica di PaySlipsAdmin)
+    const params = company.costParameters;
+    const lordo = ps.competenzeLorde || 0;
+    const inpsBase = ps.imponibileInps || 0;
+    const inailBase = ps.imponibileInail || 0;
+
+    const cassaEdile = inpsBase * (params.cassaEdileRate / 100);
+    const inpsAzienda = inpsBase * (params.inpsRate / 100);
+    const inailAzienda = inailBase * (params.inailRate / 100);
+    const tfr = lordo / (params.tfrDivisor || 13.5);
+
+    const costoTotale = lordo + inpsAzienda + inailAzienda + tfr + cassaEdile;
+    const newCostoOrario = newTotalHours > 0 ? costoTotale / newTotalHours : 0;
+
+    // 6. Aggiorna il documento della busta paga con il nuovo costo orario
+    await updateDoc(doc(db, 'pay_slips_data', ps.id), {
+      costoOrarioReale: newCostoOrario
+    });
   };
 
   if (loading) return (
@@ -161,162 +151,46 @@ const App: React.FC = () => {
     </div>
   );
 
-  if (!currentUser) {
-    return (
-      <Login 
-        onLogin={async (e, p) => {
-           await setPersistence(auth, browserSessionPersistence);
-           await signInWithEmailAndPassword(auth, e, p);
-        }} 
-        onRegisterCompany={async (a, c) => {
-          // implementation from original App.tsx
-        }} 
-        onPasswordReset={async (e) => {
-          await sendPasswordResetEmail(auth, e);
-        }}
-        users={users} 
-      />
-    );
-  }
+  if (!currentUser) return <Login onLogin={async (e, p) => { await signInWithEmailAndPassword(auth, e, p); }} onRegisterCompany={() => {}} onPasswordReset={async (e) => { await sendPasswordResetEmail(auth, e); }} users={users} />;
 
   const activeAttendance = attendance.find(a => a.userId === currentUser.id && !a.endTime);
   const activeSite = sites.find(s => s.id === activeAttendance?.siteId);
 
   return (
-    <Layout 
-      user={currentUser} 
-      company={company}
-      onLogout={() => signOut(auth)} 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab}
-    >
+    <Layout user={currentUser} company={company} onLogout={() => signOut(auth)} activeTab={activeTab} setActiveTab={setActiveTab}>
       {activeTab === 'attendance' && (
         <Attendance 
-          user={currentUser} 
-          sites={sites} 
-          attendance={attendance}
-          schedules={schedules}
-          reports={reports}
-          onClockIn={async (sId, coords) => {
-            await addDoc(collection(db, "timbrature"), {
-              aziendaId: currentUser.aziendaId,
-              userId: currentUser.id,
-              userName: `${currentUser.firstName} ${currentUser.lastName}`,
-              siteId: sId,
-              siteName: sites.find(s => s.id === sId)?.client || 'Unknown',
-              startTime: new Date().toISOString(),
-              startCoords: coords,
-              reportSubmitted: false
-            });
-          }}
-          onClockOut={async (id, coords) => {
-            await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords });
-          }}
+          user={currentUser} sites={sites} attendance={attendance} schedules={schedules} reports={reports}
+          onClockIn={async (sId, coords) => await addDoc(collection(db, "timbrature"), { aziendaId: currentUser.aziendaId, userId: currentUser.id, userName: `${currentUser.firstName} ${currentUser.lastName}`, siteId: sId, siteName: sites.find(s => s.id === sId)?.client || 'Unknown', startTime: new Date().toISOString(), startCoords: coords, reportSubmitted: false })}
+          onClockOut={async (id, coords) => await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords })}
           onGoToReport={() => setActiveTab('daily-report')}
         />
       )}
       {activeTab === 'daily-report' && (
         <DailyReportForm 
-          user={currentUser} 
-          activeSite={activeSite}
-          allWorkers={users.filter(u => u.role === UserRole.WORKER)}
-          schedules={schedules}
+          user={currentUser} activeSite={activeSite} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules}
           onSubmit={async (r) => {
-            // 1. Salva il rapportino
             await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId });
-            
-            // 2. Clock-out automatico se esiste una timbratura attiva
-            if (activeAttendance) {
-              await updateDoc(doc(db, "timbrature", activeAttendance.id), { 
-                endTime: new Date().toISOString(), 
-                endCoords: r.coords || null // Usa le coordinate del rapporto per la chiusura
-              });
-            }
-            
+            if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null });
             setActiveTab('attendance');
           }}
         />
       )}
       {activeTab === 'attendance-log' && (
         <AttendanceLog 
-          currentUser={currentUser}
-          attendance={attendance}
-          reports={reports}
-          sites={sites}
-          company={company}
-          paySlips={paySlips}
+          currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} company={company} paySlips={paySlips}
           onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))}
-          onUpdateRecord={async (id, upd) => await updateDoc(doc(db, "timbrature", id), upd)}
+          onUpdateRecord={handleUpdateAttendanceRecord}
         />
       )}
-      {activeTab === 'admin-pay-slips' && (
-        <PaySlipsAdmin 
-          currentUser={currentUser}
-          users={users}
-        />
-      )}
-      {activeTab === 'worker-pay-slips' && (
-        <PaySlipsWorker 
-          currentUser={currentUser}
-        />
-      )}
-      {activeTab === 'resources' && (
-        <Resources 
-          currentUser={currentUser} 
-          users={users} 
-          onAddUser={async (u) => { /* logic */ }} 
-          onUpdateUser={async (id, upd) => { await updateDoc(doc(db, "team", id), upd); }}
-          onRemoveUser={async (id) => { await updateDoc(doc(db, "team", id), { isActive: false }); }}
-        />
-      )}
-      {activeTab === 'active-sites' && (
-        <Sites 
-          currentUser={currentUser} 
-          sites={sites} 
-          attendance={attendance}
-          paySlips={paySlips}
-          onAddSite={async (s) => { await addDoc(collection(db, "cantieri"), { ...s, aziendaId: currentUser.aziendaId, isActive: true }); }} 
-          onUpdateSite={async (id, upd) => { await updateDoc(doc(db, "cantieri", id), upd); }} 
-          onRemoveSite={async (id) => { await deleteDoc(doc(db, "cantieri", id)); }}
-          showActive={true} 
-        />
-      )}
-      {activeTab === 'completed-sites' && (
-        <Sites 
-          currentUser={currentUser} 
-          sites={sites} 
-          attendance={attendance}
-          paySlips={paySlips}
-          onAddSite={async (s) => {}} 
-          onUpdateSite={async (id, upd) => {}} 
-          onRemoveSite={async (id) => {}}
-          showActive={false} 
-        />
-      )}
-      {activeTab === 'archived-reports' && (
-        <ArchivedReports 
-          currentUser={currentUser}
-          reports={reports} 
-          company={company} 
-          onRemoveReport={async (id) => { await deleteDoc(doc(db, "reports", id)); }}
-        />
-      )}
-      {activeTab === 'schedule' && (
-        <Schedule 
-          currentUser={currentUser}
-          sites={sites} 
-          workers={users.filter(u => u.role === UserRole.WORKER)} 
-          schedules={schedules}
-          onUpdateSchedule={async (d, s) => { await setDoc(doc(db, "schedules", `${currentUser.aziendaId}_${d}`), s); }}
-        />
-      )}
-      {activeTab === 'options' && (
-        <Options 
-          user={currentUser} 
-          company={company} 
-          onUpdateCompany={handleUpdateCompany}
-        />
-      )}
+      {activeTab === 'admin-pay-slips' && <PaySlipsAdmin currentUser={currentUser} users={users} />}
+      {activeTab === 'worker-pay-slips' && <PaySlipsWorker currentUser={currentUser} />}
+      {activeTab === 'resources' && <Resources currentUser={currentUser} users={users} onAddUser={() => {}} onUpdateUser={async (id, upd) => await updateDoc(doc(db, "team", id), upd)} onRemoveUser={async (id) => await updateDoc(doc(db, "team", id), { isActive: false })} />}
+      {activeTab === 'active-sites' && <Sites currentUser={currentUser} sites={sites} attendance={attendance} paySlips={paySlips} onAddSite={async (s) => await addDoc(collection(db, "cantieri"), { ...s, aziendaId: currentUser.aziendaId, isActive: true })} onUpdateSite={async (id, upd) => await updateDoc(doc(db, "cantieri", id), upd)} onRemoveSite={async (id) => await deleteDoc(doc(db, "cantieri", id))} showActive={true} />}
+      {activeTab === 'completed-sites' && <Sites currentUser={currentUser} sites={sites} attendance={attendance} paySlips={paySlips} onAddSite={async (s) => {}} onUpdateSite={async (id, upd) => {}} onRemoveSite={async (id) => {}} showActive={false} />}
+      {activeTab === 'archived-reports' && <ArchivedReports currentUser={currentUser} reports={reports} company={company} onRemoveReport={async (id) => await deleteDoc(doc(db, "reports", id))} />}
+      {activeTab === 'schedule' && <Schedule currentUser={currentUser} sites={sites} workers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules} onUpdateSchedule={async (d, s) => await setDoc(doc(db, "schedules", `${currentUser.aziendaId}_${d}`), s)} />}
+      {activeTab === 'options' && <Options user={currentUser} company={company} onUpdateCompany={async (c) => await setDoc(doc(db, "aziende", currentUser.aziendaId), c, { merge: true })} />}
     </Layout>
   );
 };
