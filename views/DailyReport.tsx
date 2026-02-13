@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Button } from '../components/Shared';
 import { User, Site, DailyReport, DailySchedule } from '../types';
-import { Camera, Send, Plus, Users, Clipboard, X, MapPin, Check, ChevronDown } from 'lucide-react';
+import { Camera, Send, Plus, Users, Clipboard, X, MapPin, Check, ChevronDown, Image as ImageIcon } from 'lucide-react';
 
 interface DailyReportFormProps {
   user: User;
@@ -66,6 +66,10 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
     e.preventDefault();
     if (!selectedSiteId) { alert("Seleziona un cantiere."); return; }
     if (!description.trim()) { alert("Inserisci una descrizione delle lavorazioni."); return; }
+    if (photoUrls.length === 0) { 
+      alert("È obbligatorio allegare almeno una foto del lavoro svolto oggi."); 
+      return; 
+    }
     if (!currentCoords) { alert("Attendi il rilevamento GPS."); return; }
 
     const workerNames = allWorkers
@@ -89,16 +93,16 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <Card className="p-6">
         <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-100">
-          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center">
+          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center shadow-sm">
             <Clipboard size={24} />
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-bold text-slate-800">Nuovo Rapportino</h2>
+            <h2 className="text-xl font-bold text-slate-800">Compilazione Rapporto</h2>
             {activeSite ? (
-              <p className="text-sm text-slate-500">Cantiere: <span className="font-semibold text-blue-600">{activeSite.client}</span></p>
+              <p className="text-sm text-slate-500 font-medium">Cantiere: <span className="text-blue-600">{activeSite.client}</span></p>
             ) : (
               <div className="relative mt-1">
                 <select 
@@ -140,11 +144,13 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-slate-700">Descrizione Lavorazioni</label>
+            <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+               <Clipboard size={16} className="text-blue-500" /> Descrizione Lavorazioni
+            </label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Cosa avete fatto oggi?"
+              placeholder="Cosa avete fatto oggi? Sii dettagliato..."
               className="w-full h-40 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none text-sm"
               required
             />
@@ -155,40 +161,70 @@ const DailyReportForm: React.FC<DailyReportFormProps> = ({ user, activeSite, sit
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Eventuali note aggiuntive..."
+              placeholder="Eventuali intoppi, materiali mancanti o richieste..."
               className="w-full h-20 px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none text-sm"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-slate-700">Foto del lavoro</label>
-            <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <ImageIcon size={16} className="text-blue-500" /> Foto del lavoro
+              </label>
+              <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-0.5 rounded border border-red-100 italic">
+                * Almeno 1 foto obbligatoria
+              </span>
+            </div>
+            
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
               {photoUrls.map((url, idx) => (
-                <div key={idx} className="aspect-square rounded-xl border border-slate-200 bg-slate-100 relative group overflow-hidden">
+                <div key={idx} className="aspect-square rounded-xl border border-slate-200 bg-slate-100 relative group overflow-hidden shadow-sm">
                   <img src={url} className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => removePhoto(idx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={12} /></button>
+                  <button 
+                    type="button" 
+                    onClick={() => removePhoto(idx)} 
+                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                  >
+                    <X size={12} />
+                  </button>
                 </div>
               ))}
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-all bg-slate-50">
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()} 
+                className={`aspect-square rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-all bg-slate-50 ${photoUrls.length === 0 ? 'border-red-300 text-red-400 animate-pulse' : 'border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-500'}`}
+              >
                 <Plus size={24} />
-                <span className="text-[10px] font-bold">Foto</span>
+                <span className="text-[10px] font-bold">Aggiungi</span>
               </button>
             </div>
             <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoUpload} />
           </div>
 
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-[10px] text-slate-400">
-              <MapPin size={12} className={currentCoords ? "text-green-500" : ""} />
-              {currentCoords ? `Posizione rilevata` : "Rilevamento posizione in corso..."}
+          <div className="flex flex-col gap-4 pt-4 border-t border-slate-100">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <MapPin size={12} className={currentCoords ? "text-green-500" : "text-slate-300"} />
+              {currentCoords ? `GPS OK: Posizione acquisita` : "Rilevamento posizione..."}
             </div>
-            <Button type="submit" className="w-full h-12 text-lg shadow-md group">
+            
+            <Button 
+              type="submit" 
+              className="w-full h-14 text-lg shadow-xl group"
+              disabled={photoUrls.length === 0}
+            >
               <Send size={18} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-              Invia e Chiudi Turno
+              Invia Rapporto e Chiudi Turno
             </Button>
-            {activeSite && (
+            
+            {photoUrls.length === 0 && (
+              <p className="text-center text-[10px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">
+                ⚠️ Carica almeno una foto del lavoro per poter terminare la giornata.
+              </p>
+            )}
+            
+            {activeSite && photoUrls.length > 0 && (
               <p className="text-center text-[10px] text-amber-600 font-bold uppercase tracking-wider">
-                L'invio confermerà automaticamente la tua uscita dal cantiere.
+                L'invio confermerà automaticamente la tua uscita da {activeSite.client}.
               </p>
             )}
           </div>
