@@ -19,9 +19,12 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
+  // Protezione contro user null o indefinito
+  if (!user || !user.role) return null;
+
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
-    { id: 'daily-report', label: 'Rapportino', icon: ClipboardCheck, roles: [] }, 
+    { id: 'daily-report', label: 'Rapportino', icon: ClipboardCheck, roles: [UserRole.WORKER, UserRole.SUPERVISOR] }, 
     { id: 'attendance-log', label: 'Registro Timbrature', icon: ListFilter, roles: [UserRole.ADMIN, UserRole.SUPERVISOR] },
     { id: 'worker-pay-slips', label: 'Le mie Buste Paga', icon: FileText, roles: [UserRole.WORKER] },
     { id: 'admin-pay-slips', label: 'Gestione Buste Paga', icon: FileText, roles: [UserRole.ADMIN] },
@@ -37,14 +40,11 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
   const getGuide = () => {
     const guides: Record<string, {title: string, steps: string[]}> = {
-      attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "La 'Fine' si timbra automaticamente con il rapportino."] },
-      resources: { title: "Gestione Team", steps: ["Aggiungi nuovi operai con il tasto '+'.", "L'eliminazione blocca l'accesso ai dati.", "Puoi modificare i ruoli dei dipendenti."] },
-      schedule: { title: "Programma Lavori", steps: ["Trascina i nomi dai disponibili ai cantieri.", "Swipe a destra/sinistra per cambiare data.", "Invia il riepilogo al gruppo WhatsApp aziendale."] },
-      options: { title: "Opzioni & Profilo", steps: ["Aggiorna qui la tua password personale.", "Visualizza i tuoi dati o quelli aziendali.", "Cambia il logo o il colore del brand."] },
-      'worker-pay-slips': { title: "Buste Paga", steps: ["Qui puoi vedere tutte le tue buste paga.", "Clicca 'Visualizza' per aprire il PDF.", "Clicca 'Accetta' per confermare la ricezione."] },
-      'admin-pay-slips': { title: "Invio Buste Paga", steps: ["Seleziona un dipendente e un mese.", "Carica il file PDF corrispondente.", "Monitora lo stato di accettazione dai dipendenti."] }
+      attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "Al termine, clicca 'Fine' e segui le istruzioni per il rapportino."] },
+      'daily-report': { title: "Compilazione Rapportino", steps: ["Seleziona i colleghi presenti con te.", "Descrivi le lavorazioni principali.", "Scatta almeno una foto del lavoro svolto.", "Invia per chiudere la giornata."] },
+      schedule: { title: "Programma Lavori", steps: ["Trascina i nomi dai disponibili ai cantieri.", "Invia il riepilogo al gruppo WhatsApp aziendale."] },
     };
-    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Controlla le opzioni per la tua sicurezza.", "Contatta l'admin per permessi aggiuntivi."] };
+    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Contatta l'admin per permessi aggiuntivi."] };
   };
 
   return (
@@ -61,11 +61,9 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-slate-800 space-y-4">
+        <div className="p-4 border-t border-slate-800 space-y-4 text-center">
            <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-lg transition-all active:scale-95"><LogOut size={20} /> Logout</button>
-           <div className="text-center">
-              <p className="text-[10px] font-bold text-slate-600 tracking-widest uppercase">powered by Simone Barni</p>
-           </div>
+           <p className="text-[9px] font-bold text-slate-600 tracking-widest uppercase mt-2">powered by Simone Barni</p>
         </div>
       </aside>
 
@@ -77,11 +75,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-7xl mx-auto min-h-full flex flex-col">
-            <div className="flex-1">{children}</div>
-            <div className="mt-12 mb-4 text-center">
-               <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">powered by Simone Barni</p>
-            </div>
+          <div className="max-w-7xl mx-auto min-h-full">
+            {children}
           </div>
         </div>
 

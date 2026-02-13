@@ -62,27 +62,14 @@ const App: React.FC = () => {
           const userDoc = await getDoc(doc(db, "team", fbUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data() as User & { isActive?: boolean };
-            if (userData.isActive === false) { 
-              await signOut(auth); 
-              setLoading(false);
-              return; 
-            }
+            if (userData.isActive === false) { await signOut(auth); setLoading(false); return; }
             setCurrentUser({ ...userData, id: fbUser.uid });
             if (userData.role === UserRole.WORKER) setActiveTab('attendance');
             else setActiveTab('attendance-log');
             setupFirestoreListeners(userData.aziendaId);
-          } else {
-            setCurrentUser(null);
-            setLoading(false);
-          }
-        } catch (e) { 
-          console.error(e); 
-          setLoading(false);
-        }
-      } else { 
-        setCurrentUser(null); 
-        setLoading(false); 
-      }
+          } else { setCurrentUser(null); setLoading(false); }
+        } catch (e) { console.error(e); setLoading(false); }
+      } else { setCurrentUser(null); setLoading(false); }
     });
     return () => unsubscribeAuth();
   }, []);
@@ -103,54 +90,29 @@ const App: React.FC = () => {
   };
 
   const handleUpdateAttendanceRecord = async (id: string, updates: Partial<AttendanceRecord>) => {
-    // 1. Aggiorna la timbratura su Firestore
     await updateDoc(doc(db, "timbrature", id), updates);
-
-    // 2. Recupera i dati necessari per il ricalcolo
     const record = attendance.find(a => a.id === id);
     if (!record || !company.costParameters) return;
-
     const startDate = new Date(updates.startTime || record.startTime);
     const monthKey = `${(startDate.getMonth() + 1).toString().padStart(2, '0')}/${startDate.getFullYear()}`;
-
-    // 3. Cerca se esiste una busta paga per questo utente e questo mese
     const ps = paySlips.find(p => p.userId === record.userId && p.month === monthKey);
     if (!ps) return;
-
-    // 4. Calcola le nuove ore totali del mese per l'utente
     const monthPrefix = `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, '0')}`;
-    const newTotalHours = attendance
-      .map(a => a.id === id ? { ...a, ...updates } : a) // Considera la modifica appena fatta
-      .filter(a => a.userId === record.userId && a.startTime.includes(monthPrefix) && a.endTime)
-      .reduce((sum, a) => sum + (new Date(a.endTime!).getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60), 0);
-
-    // 5. Ricalcola il Costo Orario Reale (stessa logica di PaySlipsAdmin)
+    const newTotalHours = attendance.map(a => a.id === id ? { ...a, ...updates } : a).filter(a => a.userId === record.userId && a.startTime.includes(monthPrefix) && a.endTime).reduce((sum, a) => sum + (new Date(a.endTime!).getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60), 0);
     const params = company.costParameters;
     const lordo = ps.competenzeLorde || 0;
     const inpsBase = ps.imponibileInps || 0;
     const inailBase = ps.imponibileInail || 0;
-
     const cassaEdile = inpsBase * (params.cassaEdileRate / 100);
     const inpsAzienda = inpsBase * (params.inpsRate / 100);
     const inailAzienda = inailBase * (params.inailRate / 100);
     const tfr = lordo / (params.tfrDivisor || 13.5);
-
     const costoTotale = lordo + inpsAzienda + inailAzienda + tfr + cassaEdile;
     const newCostoOrario = newTotalHours > 0 ? costoTotale / newTotalHours : 0;
-
-    // 6. Aggiorna il documento della busta paga con il nuovo costo orario
-    await updateDoc(doc(db, 'pay_slips_data', ps.id), {
-      costoOrarioReale: newCostoOrario
-    });
+    await updateDoc(doc(db, 'pay_slips_data', ps.id), { costoOrarioReale: newCostoOrario });
   };
 
-  if (loading) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest">
-      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-      COSTRUGEST...
-    </div>
-  );
-
+  if (loading) return <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>COSTRUGEST...</div>;
   if (!currentUser) return <Login onLogin={async (e, p) => { await signInWithEmailAndPassword(auth, e, p); }} onRegisterCompany={() => {}} onPasswordReset={async (e) => { await sendPasswordResetEmail(auth, e); }} users={users} />;
 
   const activeAttendance = attendance.find(a => a.userId === currentUser.id && !a.endTime);
@@ -158,31 +120,9 @@ const App: React.FC = () => {
 
   return (
     <Layout user={currentUser} company={company} onLogout={() => signOut(auth)} activeTab={activeTab} setActiveTab={setActiveTab}>
-      {activeTab === 'attendance' && (
-        <Attendance 
-          user={currentUser} sites={sites} attendance={attendance} schedules={schedules} reports={reports}
-          onClockIn={async (sId, coords) => await addDoc(collection(db, "timbrature"), { aziendaId: currentUser.aziendaId, userId: currentUser.id, userName: `${currentUser.firstName} ${currentUser.lastName}`, siteId: sId, siteName: sites.find(s => s.id === sId)?.client || 'Unknown', startTime: new Date().toISOString(), startCoords: coords, reportSubmitted: false })}
-          onClockOut={async (id, coords) => await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords })}
-          onGoToReport={() => setActiveTab('daily-report')}
-        />
-      )}
-      {activeTab === 'daily-report' && (
-        <DailyReportForm 
-          user={currentUser} activeSite={activeSite} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules}
-          onSubmit={async (r) => {
-            await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId });
-            if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null });
-            setActiveTab('attendance');
-          }}
-        />
-      )}
-      {activeTab === 'attendance-log' && (
-        <AttendanceLog 
-          currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} company={company} paySlips={paySlips}
-          onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))}
-          onUpdateRecord={handleUpdateAttendanceRecord}
-        />
-      )}
+      {activeTab === 'attendance' && <Attendance user={currentUser} sites={sites} attendance={attendance} schedules={schedules} reports={reports} onClockIn={async (sId, coords) => await addDoc(collection(db, "timbrature"), { aziendaId: currentUser.aziendaId, userId: currentUser.id, userName: `${currentUser.firstName} ${currentUser.lastName}`, siteId: sId, siteName: sites.find(s => s.id === sId)?.client || 'Unknown', startTime: new Date().toISOString(), startCoords: coords, reportSubmitted: false })} onClockOut={async (id, coords) => await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords })} onGoToReport={() => setActiveTab('daily-report')} />}
+      {activeTab === 'daily-report' && <DailyReportForm user={currentUser} activeSite={activeSite} sites={sites} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules} onSubmit={async (r) => { await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId }); if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null, reportSubmitted: true }); setActiveTab('attendance'); }} />}
+      {activeTab === 'attendance-log' && <AttendanceLog currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} company={company} paySlips={paySlips} onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))} onUpdateRecord={handleUpdateAttendanceRecord} />}
       {activeTab === 'admin-pay-slips' && <PaySlipsAdmin currentUser={currentUser} users={users} />}
       {activeTab === 'worker-pay-slips' && <PaySlipsWorker currentUser={currentUser} />}
       {activeTab === 'resources' && <Resources currentUser={currentUser} users={users} onAddUser={() => {}} onUpdateUser={async (id, upd) => await updateDoc(doc(db, "team", id), upd)} onRemoveUser={async (id) => await updateDoc(doc(db, "team", id), { isActive: false })} />}
