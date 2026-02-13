@@ -15,15 +15,6 @@ interface AttendanceProps {
   onGoToReport: () => void;
 }
 
-// Helper per ottenere la data locale YYYY-MM-DD senza offset ISO
-const getLocalDateString = (dateInput?: string | Date) => {
-  const d = dateInput ? new Date(dateInput) : new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 const Attendance: React.FC<AttendanceProps> = ({ 
   user, 
   sites, 
@@ -35,9 +26,9 @@ const Attendance: React.FC<AttendanceProps> = ({
   onGoToReport 
 }) => {
   const [currentCoords, setCurrentCoords] = useState<{ lat: number, lng: number } | null>(null);
-  const [promptState, setPromptState] = useState<'none' | 'confirm_exit' | 'ask_delegate' | 'force_report'>('none');
+  const [promptState, setPromptState] = useState<'none' | 'confirm_simple' | 'ask_delegate' | 'force_report'>('none');
 
-  const todayStr = getLocalDateString();
+  const todayStr = new Date().toISOString().split('T')[0];
   
   const assignedSiteId = useMemo(() => {
     const todaySchedule = schedules[todayStr];
@@ -49,13 +40,6 @@ const Attendance: React.FC<AttendanceProps> = ({
   }, [schedules, todayStr, user.id]);
 
   const activeRecord = attendance.find(a => a.userId === user.id && !a.endTime);
-
-  // Calcola se il rapportino ESISTE per il cantiere e la data in cui è iniziato il turno
-  const reportExists = useMemo(() => {
-    if (!activeRecord) return false;
-    const shiftStartDate = getLocalDateString(activeRecord.startTime);
-    return reports.some(r => r.siteId === activeRecord.siteId && r.date === shiftStartDate);
-  }, [reports, activeRecord]);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -70,20 +54,22 @@ const Attendance: React.FC<AttendanceProps> = ({
   const handleClockOutAttempt = () => {
     if (!activeRecord || !currentCoords) return;
 
-    // SCENARIO 3: Rapportino già esistente
+    // 1. Verifica se il rapportino è già stato fatto per questo cantiere oggi
+    const reportExists = reports.some(r => r.siteId === activeRecord.siteId && r.date === todayStr);
+    
     if (reportExists) {
-      setPromptState('confirm_exit');
+      setPromptState('confirm_simple');
       return;
     }
 
-    // SCENARIO 1 & 2: Rapportino mancante
+    // 2. Conta quanti operai sono attivi in questo cantiere
     const workersStillIn = attendance.filter(a => !a.endTime && a.siteId === activeRecord.siteId);
-    
+
     if (workersStillIn.length > 1) {
-      // Scenario 2: Altri colleghi presenti -> Richiesta non obbligatoria
+      // Ci sono altri colleghi: richiesta facoltativa/delega
       setPromptState('ask_delegate');
     } else {
-      // Scenario 1: Ultimo operaio -> Obbligo
+      // È l'ultimo: obbligo rapportino
       setPromptState('force_report');
     }
   };
@@ -154,17 +140,17 @@ const Attendance: React.FC<AttendanceProps> = ({
               <X size={20} />
             </button>
 
-            {promptState === 'confirm_exit' && (
+            {promptState === 'confirm_simple' && (
               <div className="text-center">
                 <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800">Confermi l'uscita?</h3>
                 <p className="text-sm text-slate-500 mt-2 mb-6">
-                  Il rapportino di oggi per <b>{activeRecord?.siteName}</b> è già stato correttamente inviato.
+                  Il rapportino giornaliero per questo cantiere è già stato inviato correttamente da un tuo collega.
                 </p>
                 <div className="space-y-2">
-                  <Button onClick={executeClockOut} className="w-full h-12 shadow-md">Si, conferma uscita</Button>
+                  <Button onClick={executeClockOut} className="w-full h-12">Si, Timbra Uscita</Button>
                   <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Annulla</Button>
                 </div>
               </div>
@@ -177,16 +163,16 @@ const Attendance: React.FC<AttendanceProps> = ({
                 </div>
                 <h3 className="text-xl font-bold text-slate-800">Rapportino Mancante</h3>
                 <p className="text-sm text-slate-500 mt-2 mb-6">
-                  Nessuno ha ancora compilato il rapporto di oggi. Vuoi farlo tu o deleghi ai colleghi ancora in cantiere?
+                  Nessuno ha ancora inviato il rapporto di oggi. Vuoi compilarlo tu o lo lasci fare ai colleghi che restano?
                 </p>
                 <div className="space-y-3">
-                  <Button onClick={onGoToReport} className="w-full h-12 bg-amber-600 shadow-md">
+                  <Button onClick={onGoToReport} className="w-full h-12 bg-amber-600">
                     Sì, lo compilo ora
                   </Button>
-                  <Button variant="secondary" onClick={executeClockOut} className="w-full h-12 border border-slate-200">
+                  <Button variant="secondary" onClick={executeClockOut} className="w-full h-12">
                     Delego ai colleghi ed Esco
                   </Button>
-                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Annulla</Button>
+                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Torna Indietro</Button>
                 </div>
               </div>
             )}
@@ -196,15 +182,15 @@ const Attendance: React.FC<AttendanceProps> = ({
                 <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <AlertCircle size={32} />
                 </div>
-                <h3 className="text-xl font-bold text-slate-800">Uscita Bloccata</h3>
+                <h3 className="text-xl font-bold text-slate-800">Azione Obbligatoria</h3>
                 <p className="text-sm text-slate-500 mt-2 mb-6">
-                  Sei l'ultimo a lasciare il cantiere oggi. È obbligatorio compilare il rapportino (con almeno una foto) per poter terminare il turno.
+                  Sei l'ultimo a lasciare il cantiere oggi. Devi obbligatoriamente inviare il rapportino prima di poter timbrare l'uscita.
                 </p>
                 <div className="space-y-2">
-                  <Button onClick={onGoToReport} className="w-full h-12 bg-red-600 shadow-lg">
+                  <Button onClick={onGoToReport} className="w-full h-12 bg-red-600">
                     Vai al Rapportino <ChevronRight size={18} />
                   </Button>
-                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Torna Indietro</Button>
+                  <Button variant="ghost" onClick={() => setPromptState('none')} className="w-full">Annulla</Button>
                 </div>
               </div>
             )}
