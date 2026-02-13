@@ -39,6 +39,15 @@ const DEFAULT_COMPANY: Company = {
   vatNumber: ''
 };
 
+// Helper data locale identico a quello in Attendance
+const getLocalDateString = (dateInput?: string | Date) => {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('attendance');
@@ -117,11 +126,12 @@ const App: React.FC = () => {
 
   const activeAttendance = attendance.find(a => a.userId === currentUser.id && !a.endTime);
   const activeSite = sites.find(s => s.id === activeAttendance?.siteId);
+  const referenceDate = activeAttendance ? getLocalDateString(activeAttendance.startTime) : undefined;
 
   return (
     <Layout user={currentUser} company={company} onLogout={() => signOut(auth)} activeTab={activeTab} setActiveTab={setActiveTab}>
       {activeTab === 'attendance' && <Attendance user={currentUser} sites={sites} attendance={attendance} schedules={schedules} reports={reports} onClockIn={async (sId, coords) => await addDoc(collection(db, "timbrature"), { aziendaId: currentUser.aziendaId, userId: currentUser.id, userName: `${currentUser.firstName} ${currentUser.lastName}`, siteId: sId, siteName: sites.find(s => s.id === sId)?.client || 'Unknown', startTime: new Date().toISOString(), startCoords: coords, reportSubmitted: false })} onClockOut={async (id, coords) => await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords })} onGoToReport={() => setActiveTab('daily-report')} />}
-      {activeTab === 'daily-report' && <DailyReportForm user={currentUser} activeSite={activeSite} sites={sites} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules} onSubmit={async (r) => { await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId }); if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null, reportSubmitted: true }); setActiveTab('attendance'); }} />}
+      {activeTab === 'daily-report' && <DailyReportForm user={currentUser} activeSite={activeSite} sites={sites} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules} referenceDate={referenceDate} onSubmit={async (r) => { await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId }); if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null, reportSubmitted: true }); setActiveTab('attendance'); }} />}
       {activeTab === 'attendance-log' && <AttendanceLog currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} company={company} paySlips={paySlips} onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))} onUpdateRecord={handleUpdateAttendanceRecord} />}
       {activeTab === 'admin-pay-slips' && <PaySlipsAdmin currentUser={currentUser} users={users} />}
       {activeTab === 'worker-pay-slips' && <PaySlipsWorker currentUser={currentUser} />}
