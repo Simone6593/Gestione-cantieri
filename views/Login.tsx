@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Input, Modal, Logo } from '../components/Shared';
+import { Card, Button, Input, Modal } from '../components/Shared';
 import { Construction, Eye, EyeOff, ArrowLeft, KeyRound, Mail, Lock } from 'lucide-react';
 import { User, UserRole, Company } from '../types';
 
@@ -144,7 +144,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, onRegisterCompany, onPasswordRes
       <Modal {...modal} onClose={() => setModal({ ...modal, isOpen: false })} />
       <div className="w-full max-w-lg">
         <div className="flex flex-col items-center mb-10 text-white">
-          <Logo size="xl" className="mb-6" />
+          <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-6 animate-in zoom-in duration-500">
+            <Construction size={40} className="text-white" />
+          </div>
           <h1 className="text-4xl font-black tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
             CostruGest
           </h1>

@@ -4,7 +4,7 @@ import { UserRole, Company } from '../types';
 import { 
   Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart
 } from 'lucide-react';
-import { Card, Button, Logo } from './Shared';
+import { Card, Button } from './Shared';
 
 interface LayoutProps {
   user: any;
@@ -49,11 +49,13 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <aside className={`fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 text-white transform transition-transform z-50 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="p-6 flex items-center gap-4 border-b border-slate-800">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
           {company.logoUrl ? (
             <img src={company.logoUrl} className="w-10 h-10 object-contain bg-white rounded p-1" />
           ) : (
-            <Logo size="sm" />
+            <div className="w-10 h-10 bg-[var(--primary-color)] rounded-lg flex items-center justify-center font-bold uppercase shrink-0">
+              {company.name[0]}
+            </div>
           )}
           <div className="flex flex-col min-w-0">
             <span className="font-bold truncate text-sm leading-tight">{company.name}</span>
