@@ -74,7 +74,7 @@ const Attendance: React.FC<AttendanceProps> = ({
           setCurrentCoords(coords);
         },
         (err) => console.error("Geolocation error", err),
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
@@ -93,6 +93,7 @@ const Attendance: React.FC<AttendanceProps> = ({
     }
 
     if (mapRef.current) {
+      // Pulisci i marker dei cantieri
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
@@ -123,20 +124,19 @@ const Attendance: React.FC<AttendanceProps> = ({
         }
       });
 
-      if (currentCoords) {
+      // Gestione marker utente "Io sono qui"
+      if (currentCoords && mapRef.current) {
         hasPoints = true;
         if (userMarkerRef.current) userMarkerRef.current.remove();
 
         const userMarkerContainer = document.createElement('div');
         userMarkerContainer.className = 'relative flex flex-col items-center';
         
-        // Etichetta "Io sono qui"
         const label = document.createElement('div');
-        label.className = 'absolute -top-8 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap animate-bounce';
+        label.className = 'absolute -top-8 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap animate-bounce z-50';
         label.innerText = 'Io sono qui';
         userMarkerContainer.appendChild(label);
 
-        // Freccia di navigazione con pulsazione
         const arrowEl = document.createElement('div');
         arrowEl.className = 'relative w-6 h-6 flex items-center justify-center';
         arrowEl.innerHTML = `
@@ -156,8 +156,8 @@ const Attendance: React.FC<AttendanceProps> = ({
         bounds.extend([currentCoords.lng, currentCoords.lat]);
       }
 
-      if (hasPoints) {
-        mapRef.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+      if (hasPoints && mapRef.current) {
+        mapRef.current.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 1000 });
       }
     }
   }, [assignedSiteIds, sites, completedToday, activeRecord, currentCoords]);
@@ -183,7 +183,7 @@ const Attendance: React.FC<AttendanceProps> = ({
 
   return (
     <div className="space-y-6 max-w-lg mx-auto pb-10">
-      <Card className="h-64 relative overflow-hidden shadow-md border-slate-200">
+      <Card className="h-64 relative overflow-hidden shadow-md border-slate-200 bg-slate-100">
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
         <div className="absolute top-3 left-3 bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 flex items-center gap-2 z-30">
           <MapIcon size={14} className="text-blue-600" />
@@ -306,7 +306,7 @@ const Attendance: React.FC<AttendanceProps> = ({
           );
         })}
         {assignedSiteIds.length === 0 && (
-          <div className="py-10 text-center text-slate-400 italic text-sm bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="py-10 text-center text-slate-400 italic text-sm bg-white rounded-2xl border border-dashed border-slate-200 shadow-sm">
             Nessuna assegnazione per oggi.
           </div>
         )}
@@ -315,7 +315,7 @@ const Attendance: React.FC<AttendanceProps> = ({
       {promptState !== 'none' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <Card className="w-full max-w-sm p-6 relative animate-in zoom-in duration-300 overflow-visible shadow-2xl">
-            <button onClick={() => setPromptState('none')} className="absolute -top-2 -right-2 bg-white text-slate-400 p-1.5 rounded-full shadow-lg border hover:text-slate-600">
+            <button onClick={() => setPromptState('none')} className="absolute -top-2 -right-2 bg-white text-slate-400 p-1.5 rounded-full shadow-lg border hover:text-slate-600 transition-colors">
               <X size={20} />
             </button>
 

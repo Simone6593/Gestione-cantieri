@@ -104,6 +104,17 @@ const App: React.FC = () => {
     await updateDoc(doc(db, "timbrature", id), updates);
   };
 
+  const handleAddUser = async (userData: any) => {
+    if (!currentUser) return;
+    const { password, ...data } = userData;
+    // In questa demo salviamo solo su Firestore. In produzione useremmo Firebase Auth.
+    await addDoc(collection(db, "team"), {
+      ...data,
+      aziendaId: currentUser.aziendaId,
+      isActive: true
+    });
+  };
+
   if (loading) return <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>COSTRUGEST...</div>;
   if (!currentUser) return <Login onLogin={async (email, password) => { await signInWithEmailAndPassword(auth, email, password); }} onRegisterCompany={() => {}} onPasswordReset={async (email) => { await sendPasswordResetEmail(auth, email); }} users={users} />;
 
@@ -119,7 +130,7 @@ const App: React.FC = () => {
       {activeTab === 'material-costs' && <MaterialCosts currentUser={currentUser} sites={sites} costs={materialCosts} onAddCost={async (c) => await addDoc(collection(db, "material_costs"), c)} onRemoveCost={async (id) => await deleteDoc(doc(db, "material_costs", id))} />}
       {activeTab === 'admin-pay-slips' && <PaySlipsAdmin currentUser={currentUser} users={users} />}
       {activeTab === 'worker-pay-slips' && <PaySlipsWorker currentUser={currentUser} />}
-      {activeTab === 'resources' && <Resources currentUser={currentUser} users={users} onAddUser={() => {}} onUpdateUser={async (id, upd) => await updateDoc(doc(db, "team", id), upd)} onRemoveUser={async (id) => await updateDoc(doc(db, "team", id), { isActive: false })} />}
+      {activeTab === 'resources' && <Resources currentUser={currentUser} users={users} onAddUser={handleAddUser} onUpdateUser={async (id, upd) => await updateDoc(doc(db, "team", id), upd)} onRemoveUser={async (id) => await updateDoc(doc(db, "team", id), { isActive: false })} />}
       {activeTab === 'active-sites' && <Sites currentUser={currentUser} sites={sites} attendance={attendance} paySlips={paySlips} materialCosts={materialCosts} onAddSite={async (s) => await addDoc(collection(db, "cantieri"), { ...s, aziendaId: currentUser.aziendaId, isActive: true })} onUpdateSite={async (id, upd) => await updateDoc(doc(db, "cantieri", id), upd)} onRemoveSite={async (id) => await deleteDoc(doc(db, "cantieri", id))} showActive={true} />}
       {activeTab === 'completed-sites' && <Sites currentUser={currentUser} sites={sites} attendance={attendance} paySlips={paySlips} materialCosts={materialCosts} onAddSite={async (s) => {}} onUpdateSite={async (id, upd) => {}} onRemoveSite={async (id) => {}} showActive={false} />}
       {activeTab === 'archived-reports' && <ArchivedReports currentUser={currentUser} reports={reports} company={company} onRemoveReport={async (id) => await deleteDoc(doc(db, "reports", id))} />}
