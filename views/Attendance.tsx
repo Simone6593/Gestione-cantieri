@@ -42,10 +42,10 @@ const Attendance: React.FC<AttendanceProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const userMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   const todayStr = getLocalDateString();
   
-  // Trova TUTTI i cantieri assegnati all'utente per oggi
   const assignedSiteIds = useMemo(() => {
     const todaySchedule = schedules[todayStr];
     if (!todaySchedule) return [];
@@ -56,31 +56,30 @@ const Attendance: React.FC<AttendanceProps> = ({
     return siteIds;
   }, [schedules, todayStr, user.id]);
 
-  // Timbratura attiva (se presente)
   const activeRecord = attendance.find(a => a.userId === user.id && !a.endTime);
 
-  // Lista dei lavori completati oggi
   const completedToday = useMemo(() => {
     return attendance
       .filter(a => a.userId === user.id && a.endTime && a.startTime.includes(todayStr))
       .map(a => a.siteId);
   }, [attendance, user.id, todayStr]);
 
-  // Cantiere attualmente selezionato per il clock-in
   const nextSiteId = selectedSiteId || assignedSiteIds.find(id => !completedToday.includes(id)) || '';
 
   useEffect(() => {
     if (navigator.geolocation) {
       const watchId = navigator.geolocation.watchPosition(
-        (pos) => setCurrentCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (pos) => {
+          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setCurrentCoords(coords);
+        },
         (err) => console.error("Geolocation error", err),
-        { enableHighAccuracy: true }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
   }, []);
 
-  // Inizializzazione e aggiornamento Mappa
   useEffect(() => {
     if (mapContainerRef.current && !mapRef.current && assignedSiteIds.length > 0) {
       mapRef.current = new maplibregl.Map({
@@ -94,22 +93,21 @@ const Attendance: React.FC<AttendanceProps> = ({
     }
 
     if (mapRef.current) {
-      // Pulisci marker precedenti
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
       const bounds = new maplibregl.LngLatBounds();
-      let hasCoords = false;
+      let hasPoints = false;
 
       assignedSiteIds.forEach((id, index) => {
         const site = sites.find(s => s.id === id);
         if (site?.coords) {
-          hasCoords = true;
+          hasPoints = true;
           const isCompleted = completedToday.includes(id);
           const isActive = activeRecord?.siteId === id;
           
           const el = document.createElement('div');
-          el.className = `w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center font-bold text-xs text-white transition-all cursor-pointer ${
+          el.className = `w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center font-bold text-xs text-white transition-all cursor-pointer z-10 ${
             isActive ? 'bg-blue-600 scale-125 animate-pulse' : isCompleted ? 'bg-green-500' : 'bg-slate-400'
           }`;
           el.innerText = (index + 1).toString();
@@ -126,17 +124,40 @@ const Attendance: React.FC<AttendanceProps> = ({
       });
 
       if (currentCoords) {
-        hasCoords = true;
-        const userEl = document.createElement('div');
-        userEl.className = 'w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-md ring-4 ring-blue-500/20';
-        new maplibregl.Marker(userEl)
+        hasPoints = true;
+        if (userMarkerRef.current) userMarkerRef.current.remove();
+
+        const userMarkerContainer = document.createElement('div');
+        userMarkerContainer.className = 'relative flex flex-col items-center';
+        
+        // Etichetta "Io sono qui"
+        const label = document.createElement('div');
+        label.className = 'absolute -top-8 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-md whitespace-nowrap animate-bounce';
+        label.innerText = 'Io sono qui';
+        userMarkerContainer.appendChild(label);
+
+        // Freccia di navigazione con pulsazione
+        const arrowEl = document.createElement('div');
+        arrowEl.className = 'relative w-6 h-6 flex items-center justify-center';
+        arrowEl.innerHTML = `
+          <div class="absolute inset-0 bg-blue-400 rounded-full animate-ping opacity-75"></div>
+          <div class="relative z-20 text-blue-600">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" class="drop-shadow-md">
+              <path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" />
+            </svg>
+          </div>
+        `;
+        userMarkerContainer.appendChild(arrowEl);
+
+        userMarkerRef.current = new maplibregl.Marker(userMarkerContainer)
           .setLngLat([currentCoords.lng, currentCoords.lat])
           .addTo(mapRef.current!);
+        
         bounds.extend([currentCoords.lng, currentCoords.lat]);
       }
 
-      if (hasCoords) {
-        mapRef.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+      if (hasPoints) {
+        mapRef.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
       }
     }
   }, [assignedSiteIds, sites, completedToday, activeRecord, currentCoords]);
@@ -162,15 +183,14 @@ const Attendance: React.FC<AttendanceProps> = ({
 
   return (
     <div className="space-y-6 max-w-lg mx-auto pb-10">
-      {/* Mappa Tabella di Marcia */}
       <Card className="h-64 relative overflow-hidden shadow-md border-slate-200">
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
-        <div className="absolute top-3 left-3 bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 flex items-center gap-2">
+        <div className="absolute top-3 left-3 bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 flex items-center gap-2 z-30">
           <MapIcon size={14} className="text-blue-600" />
-          <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">Tabella di Marcia</span>
+          <span className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">Mappa Cantieri</span>
         </div>
         {!currentCoords && (
-          <div className="absolute inset-0 bg-slate-100/50 backdrop-blur-[2px] flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-100/50 backdrop-blur-[2px] flex items-center justify-center z-40">
             <div className="flex flex-col items-center gap-2 text-slate-500">
               <Loader2 size={24} className="animate-spin" />
               <span className="text-xs font-bold uppercase tracking-wider">Acquisizione GPS...</span>
@@ -191,7 +211,7 @@ const Attendance: React.FC<AttendanceProps> = ({
                 ? `In servizio presso: ${activeRecord.siteName}` 
                 : currentNextSite 
                   ? `Selezionato: ${currentNextSite.client}`
-                  : "Nessun lavoro selezionato."}
+                  : "Scegli un cantiere dalla lista"}
             </p>
           </div>
 
@@ -225,7 +245,6 @@ const Attendance: React.FC<AttendanceProps> = ({
         </div>
       </Card>
 
-      {/* Lista Cantieri con Selezione Libera */}
       <div className="space-y-3">
         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2 flex items-center gap-2">
           <ListTodo size={14} className="text-blue-500" /> Scegli cantiere da iniziare
@@ -293,7 +312,6 @@ const Attendance: React.FC<AttendanceProps> = ({
         )}
       </div>
 
-      {/* Modali di Chiusura Turno */}
       {promptState !== 'none' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <Card className="w-full max-w-sm p-6 relative animate-in zoom-in duration-300 overflow-visible shadow-2xl">
