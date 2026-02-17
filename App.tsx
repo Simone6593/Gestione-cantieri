@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company, PaySlip, MaterialCost } from './types';
 import { auth, db } from './firebase';
 // @ts-ignore
@@ -100,6 +100,51 @@ const App: React.FC = () => {
     });
   };
 
+  // Notifiche derivate per Admin/Supervisor
+  const derivedNotifications = useMemo(() => {
+    if (!currentUser || currentUser.role === UserRole.WORKER) return [];
+    
+    const list: any[] = [];
+    
+    // Ultime 5 timbrature
+    const recentAttendance = [...attendance].sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).slice(0, 5);
+    recentAttendance.forEach(a => {
+      list.push({
+        type: 'attendance',
+        title: `${a.userName} è arrivato`,
+        message: `Entrato alle ${new Date(a.startTime).toLocaleTimeString()} presso ${a.siteName}`,
+        time: new Date(a.startTime).toLocaleDateString(),
+        timestamp: new Date(a.startTime).getTime()
+      });
+    });
+
+    // Ultimi 5 rapportini
+    const recentReports = [...reports].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
+    recentReports.forEach(r => {
+      list.push({
+        type: 'report',
+        title: `Nuovo Rapportino: ${r.siteName}`,
+        message: `Inviato da ${r.compilerName}: "${r.description.substring(0, 40)}..."`,
+        time: new Date(r.timestamp).toLocaleDateString(),
+        timestamp: new Date(r.timestamp).getTime()
+      });
+    });
+
+    // Ultime 5 spese
+    const recentCosts = [...materialCosts].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
+    recentCosts.forEach(c => {
+      list.push({
+        type: 'cost',
+        title: `Nuova Spesa: ${c.supplier}`,
+        message: `Importo: € ${c.taxableAmount.toFixed(2)} per ${c.siteNames.join(', ')}`,
+        time: new Date(c.timestamp).toLocaleDateString(),
+        timestamp: new Date(c.timestamp).getTime()
+      });
+    });
+
+    return list.sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
+  }, [attendance, reports, materialCosts, currentUser]);
+
   const handleUpdateAttendanceRecord = async (id: string, updates: Partial<AttendanceRecord>) => {
     await updateDoc(doc(db, "timbrature", id), updates);
   };
@@ -107,7 +152,6 @@ const App: React.FC = () => {
   const handleAddUser = async (userData: any) => {
     if (!currentUser) return;
     const { password, ...data } = userData;
-    // In questa demo salviamo solo su Firestore. In produzione useremmo Firebase Auth.
     await addDoc(collection(db, "team"), {
       ...data,
       aziendaId: currentUser.aziendaId,
@@ -123,10 +167,10 @@ const App: React.FC = () => {
   const referenceDate = activeAttendance ? getLocalDateString(activeAttendance.startTime) : undefined;
 
   return (
-    <Layout user={currentUser} company={company} onLogout={() => signOut(auth)} activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout user={currentUser} company={company} onLogout={() => signOut(auth)} activeTab={activeTab} setActiveTab={setActiveTab} notifications={derivedNotifications}>
       {activeTab === 'attendance' && <Attendance user={currentUser} sites={sites} attendance={attendance} schedules={schedules} reports={reports} onClockIn={async (sId, coords) => await addDoc(collection(db, "timbrature"), { aziendaId: currentUser.aziendaId, userId: currentUser.id, userName: `${currentUser.firstName} ${currentUser.lastName}`, siteId: sId, siteName: sites.find(s => s.id === sId)?.client || 'Unknown', startTime: new Date().toISOString(), startCoords: coords, reportSubmitted: false })} onClockOut={async (id, coords) => await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords })} onGoToReport={() => setActiveTab('daily-report')} />}
       {activeTab === 'daily-report' && <DailyReportForm user={currentUser} activeSite={activeSite} sites={sites} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules} referenceDate={referenceDate} onSubmit={async (r) => { await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId }); if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null, reportSubmitted: true }); setActiveTab('attendance'); }} />}
-      {activeTab === 'attendance-log' && <AttendanceLog currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} company={company} paySlips={paySlips} onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))} onUpdateRecord={handleUpdateAttendanceRecord} />}
+      {activeTab === 'attendance-log' && <AttendanceLog currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} schedules={schedules} workers={users} company={company} paySlips={paySlips} onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))} onUpdateRecord={handleUpdateAttendanceRecord} />}
       {activeTab === 'material-costs' && <MaterialCosts currentUser={currentUser} sites={sites} costs={materialCosts} onAddCost={async (c) => await addDoc(collection(db, "material_costs"), c)} onRemoveCost={async (id) => await deleteDoc(doc(db, "material_costs", id))} />}
       {activeTab === 'admin-pay-slips' && <PaySlipsAdmin currentUser={currentUser} users={users} />}
       {activeTab === 'worker-pay-slips' && <PaySlipsWorker currentUser={currentUser} />}

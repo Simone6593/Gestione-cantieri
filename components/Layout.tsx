@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart
+  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -13,13 +13,18 @@ interface LayoutProps {
   children: React.ReactNode;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  // Aggiunte props per le notifiche derivate
+  notifications?: any[];
 }
 
-const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, activeTab, setActiveTab }) => {
+const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, activeTab, setActiveTab, notifications = [] }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   if (!user || !user.role) return null;
+
+  const isAdminOrSupervisor = user.role === UserRole.ADMIN || user.role === UserRole.SUPERVISOR;
 
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
@@ -39,11 +44,11 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
   const getGuide = () => {
     const guides: Record<string, {title: string, steps: string[]}> = {
-      attendance: { title: "Timbratura GPS", steps: ["Clicca 'Inizio' per timbrare l'entrata.", "Assicurati di avere il GPS attivo.", "Al termine, clicca 'Fine'. Se sei l'ultimo, l'app ti chiederà il rapportino."] },
-      'material-costs': { title: "Costi Materiali", steps: ["Inserisci i dati della fattura o scontrino.", "Puoi selezionare più cantieri se la spesa è condivisa.", "Scarica l'Excel a fine mese per la contabilità."] },
-      schedule: { title: "Programma Lavori", steps: ["Visualizza dove sei assegnato oggi.", "I supervisori possono spostare gli operai tra i cantieri."] },
+      attendance: { title: "Timbratura GPS", steps: ["Scegli un cantiere dalla lista o dalla mappa.", "Clicca 'Inizia Turno' per timbrare.", "Al termine, compila il rapporto se sei l'ultimo a lasciare il cantiere."] },
+      'material-costs': { title: "Costi Materiali", steps: ["Inserisci i dati della fattura.", "Puoi dividere la spesa tra più cantieri.", "Esporta in CSV per la contabilità."] },
+      schedule: { title: "Programma Lavori", steps: ["Visualizza le assegnazioni giornaliere.", "Usa il Drag & Drop per spostare il personale."] },
     };
-    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu a sinistra per cambiare sezione.", "Le funzionalità dipendono dal tuo ruolo aziendale."] };
+    return guides[activeTab] || { title: "Navigazione", steps: ["Usa il menu laterale per navigare.", "Le notifiche in alto ti avvisano di nuovi eventi."] };
   };
 
   return (
@@ -80,11 +85,65 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-30">
-          <button className="lg:hidden text-slate-600" onClick={() => setSidebarOpen(true)}><Menu size={24} /></button>
-          <h1 className="text-lg font-bold text-slate-800">
-            {activeTab === 'daily-report' ? 'Compilazione Rapporto' : (navItems.find(i => i.id === activeTab)?.label || 'Dettaglio')}
-          </h1>
-          <button onClick={() => setIsGuideOpen(true)} className="p-2 text-slate-400 hover:text-[var(--primary-color)] transition-colors"><HelpCircle size={24} /></button>
+          <div className="flex items-center gap-4">
+            <button className="lg:hidden text-slate-600" onClick={() => setSidebarOpen(true)}><Menu size={24} /></button>
+            <h1 className="text-lg font-bold text-slate-800 hidden sm:block">
+              {activeTab === 'daily-report' ? 'Compilazione Rapporto' : (navItems.find(i => i.id === activeTab)?.label || 'Dettaglio')}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isAdminOrSupervisor && (
+              <div className="relative">
+                <button 
+                  onClick={() => setIsNotifOpen(!isNotifOpen)} 
+                  className={`p-2 rounded-full transition-all relative ${isNotifOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+                >
+                  <Bell size={22} />
+                  {notifications.length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
+                  )}
+                </button>
+
+                {isNotifOpen && (
+                  <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2 z-[60]">
+                    <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                      <span className="font-bold text-slate-800 text-sm">Notifiche Recenti</span>
+                      <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full uppercase">{notifications.length} Eventi</span>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notifications.length > 0 ? (
+                        notifications.map((n, i) => (
+                          <div key={i} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors flex gap-3">
+                            <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
+                              n.type === 'attendance' ? 'bg-blue-100 text-blue-600' : 
+                              n.type === 'report' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
+                            }`}>
+                              {n.type === 'attendance' ? <Clock size={16}/> : n.type === 'report' ? <MessageSquare size={16}/> : <ShoppingCart size={16}/>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 leading-tight">{n.title}</p>
+                              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
+                              <p className="text-[9px] text-slate-400 mt-1 font-medium">{n.time}</p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-10 text-center text-slate-400">
+                          <CheckCircle2 size={32} className="mx-auto mb-2 opacity-20" />
+                          <p className="text-xs font-medium">Tutto sotto controllo!</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 text-center border-t border-slate-100">
+                      <button onClick={() => setIsNotifOpen(false)} className="text-[10px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-800">Chiudi</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <button onClick={() => setIsGuideOpen(true)} className="p-2 text-slate-400 hover:text-[var(--primary-color)] transition-colors"><HelpCircle size={22} /></button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">

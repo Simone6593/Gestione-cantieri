@@ -1,14 +1,16 @@
 
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
-import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company } from '../types';
-import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon, AlertTriangle } from 'lucide-react';
+import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company, DailySchedule } from '../types';
+import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon, AlertTriangle, AlertCircle, Users } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
   attendance: AttendanceRecord[];
   reports: DailyReport[];
   sites: Site[];
+  schedules: Record<string, DailySchedule>;
+  workers: User[];
   onRemoveRecord: (id: string) => void;
   onUpdateRecord: (id: string, updates: Partial<AttendanceRecord>) => void;
   company?: Company;
@@ -16,10 +18,10 @@ interface AttendanceLogProps {
 }
 
 const AttendanceLog: React.FC<AttendanceLogProps> = ({ 
-  currentUser, attendance, reports, sites, onRemoveRecord, onUpdateRecord, company, paySlips = [] 
+  currentUser, attendance, reports, sites, schedules, workers, onRemoveRecord, onUpdateRecord, company, paySlips = [] 
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [showCostAnalysis, setShowCostAnalysis] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<{ startTime: string, endTime: string }>({ startTime: '', endTime: '' });
@@ -45,6 +47,39 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
       return matchesSearch && matchesDate;
     })
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+  // Logica di Audit: Controlla chi doveva esserci e chi manca
+  const auditSummary = useMemo(() => {
+    if (!filterDate) return null;
+    const schedule = schedules[filterDate];
+    if (!schedule) return null;
+
+    const scheduledWorkerIds = new Set<string>();
+    // Fix: Explicitly cast siteAssignments values to string[] to resolve 'unknown' type inference error
+    Object.values(schedule.siteAssignments).forEach(ids => (ids as string[]).forEach(id => scheduledWorkerIds.add(id)));
+
+    const clockedInWorkerIds = new Set(
+      attendance
+        .filter(a => new Date(a.startTime).toISOString().split('T')[0] === filterDate)
+        .map(a => a.userId)
+    );
+
+    const missingClockIns = Array.from(scheduledWorkerIds).filter(id => !clockedInWorkerIds.has(id));
+    
+    const missingClockOuts = attendance.filter(a => {
+      const isToday = new Date(a.startTime).toISOString().split('T')[0] === filterDate;
+      if (!isToday || a.endTime) return false;
+      const hoursActive = (new Date().getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60);
+      return hoursActive > 10; // Segnala se è dentro da più di 10 ore e non è uscito
+    });
+
+    return {
+      totalScheduled: scheduledWorkerIds.size,
+      totalClocked: clockedInWorkerIds.size,
+      missingIns: missingClockIns.map(id => workers.find(w => w.id === id)).filter(Boolean) as User[],
+      missingOuts: missingClockOuts
+    };
+  }, [filterDate, schedules, attendance, workers]);
 
   const getLinkedReport = (record: AttendanceRecord) => {
     const recordDate = new Date(record.startTime).toISOString().split('T')[0];
@@ -114,6 +149,40 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Audit Summary Alert */}
+      {auditSummary && (auditSummary.missingIns.length > 0 || auditSummary.missingOuts.length > 0) && (
+        <Card className="p-4 bg-red-50 border-red-200 animate-in slide-in-from-top-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={24} />
+            <div className="flex-1">
+              <h4 className="text-sm font-bold text-red-900 uppercase tracking-tight">Anomalie Timbrature rilevate ({filterDate})</h4>
+              <div className="mt-2 space-y-2">
+                {auditSummary.missingIns.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded uppercase">Manca Ingresso:</span>
+                    {auditSummary.missingIns.map(u => (
+                      <span key={u.id} className="text-xs font-semibold text-red-800 bg-red-100/50 px-2 py-0.5 rounded border border-red-200">{u.firstName} {u.lastName}</span>
+                    ))}
+                  </div>
+                )}
+                {auditSummary.missingOuts.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold bg-amber-600 text-white px-1.5 py-0.5 rounded uppercase">Manca Uscita (>10h):</span>
+                    {auditSummary.missingOuts.map(a => (
+                      <span key={a.id} className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">{a.userName}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-black text-red-600 uppercase">Status</div>
+              <div className="text-xl font-black text-red-700">{auditSummary.totalClocked}/{auditSummary.totalScheduled}</div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div><h2 className="text-xl font-bold text-slate-800">Registro Timbrature</h2><p className="text-sm text-slate-500">Log cronologico con verifica distanza GPS e ricalcolo costi automatico.</p></div>
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
