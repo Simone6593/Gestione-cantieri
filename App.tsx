@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, User, Site, DailyReport, AttendanceRecord, DailySchedule, Company, PaySlip, MaterialCost } from './types';
 import { auth, db } from './firebase';
 // @ts-ignore
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, setPersistence, browserSessionPersistence, createUserWithEmailAndPassword } from 'firebase/auth';
 import { 
   collection, 
   doc, 
@@ -62,7 +62,6 @@ const App: React.FC = () => {
   const [paySlips, setPaySlips] = useState<PaySlip[]>([]);
   const [materialCosts, setMaterialCosts] = useState<MaterialCost[]>([]);
 
-  // Stati per la gestione notifiche letti/cancellati
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
   const [deletedNotificationIds, setDeletedNotificationIds] = useState<string[]>([]);
 
@@ -70,7 +69,6 @@ const App: React.FC = () => {
     setPersistence(auth, browserSessionPersistence).catch(console.error);
     requestNotificationPermission();
     
-    // Caricamento stati notifiche da LocalStorage
     const savedRead = localStorage.getItem('costrugest_read_notifs');
     const savedDeleted = localStorage.getItem('costrugest_deleted_notifs');
     if (savedRead) setReadNotificationIds(JSON.parse(savedRead));
@@ -87,14 +85,23 @@ const App: React.FC = () => {
             if (userData.role === UserRole.WORKER) setActiveTab('attendance');
             else setActiveTab('attendance-log');
             setupFirestoreListeners(userData.aziendaId);
-          } else { setCurrentUser(null); setLoading(false); }
-        } catch (e) { console.error(e); setLoading(false); }
-      } else { setCurrentUser(null); setLoading(false); }
+          } else { 
+            console.warn("Profilo utente non trovato in Firestore");
+            setCurrentUser(null); 
+            setLoading(false); 
+          }
+        } catch (e) { 
+          console.error("Errore onAuthStateChanged:", e); 
+          setLoading(false); 
+        }
+      } else { 
+        setCurrentUser(null); 
+        setLoading(false); 
+      }
     });
     return () => unsubscribeAuth();
   }, []);
 
-  // Persistenza stati notifiche
   useEffect(() => {
     localStorage.setItem('costrugest_read_notifs', JSON.stringify(readNotificationIds));
   }, [readNotificationIds]);
@@ -119,86 +126,116 @@ const App: React.FC = () => {
     });
   };
 
-  // Notifiche derivate per Admin/Supervisor con logica di filtro e stato
   const derivedNotifications = useMemo(() => {
     if (!currentUser || currentUser.role === UserRole.WORKER) return [];
-    
     const list: any[] = [];
-    
-    // Ultime timbrature
     attendance.forEach(a => {
       if (deletedNotificationIds.includes(a.id)) return;
       list.push({
-        id: a.id,
-        type: 'attendance',
-        title: `${a.userName} è arrivato`,
+        id: a.id, type: 'attendance', title: `${a.userName} è arrivato`,
         message: `Entrato alle ${new Date(a.startTime).toLocaleTimeString()} presso ${a.siteName}`,
         time: new Date(a.startTime).toLocaleDateString(),
         timestamp: new Date(a.startTime).getTime(),
         isRead: readNotificationIds.includes(a.id)
       });
     });
-
-    // Ultimi rapportini
     reports.forEach(r => {
       if (deletedNotificationIds.includes(r.id)) return;
       list.push({
-        id: r.id,
-        type: 'report',
-        title: `Nuovo Rapportino: ${r.siteName}`,
+        id: r.id, type: 'report', title: `Nuovo Rapportino: ${r.siteName}`,
         message: `Inviato da ${r.compilerName}: "${r.description.substring(0, 40)}..."`,
         time: new Date(r.timestamp).toLocaleDateString(),
         timestamp: new Date(r.timestamp).getTime(),
         isRead: readNotificationIds.includes(r.id)
       });
     });
-
-    // Ultime spese
     materialCosts.forEach(c => {
       if (deletedNotificationIds.includes(c.id)) return;
       list.push({
-        id: c.id,
-        type: 'cost',
-        title: `Nuova Spesa: ${c.supplier}`,
+        id: c.id, type: 'cost', title: `Nuova Spesa: ${c.supplier}`,
         message: `Importo: € ${c.taxableAmount.toFixed(2)} per ${c.siteNames.join(', ')}`,
         time: new Date(c.timestamp).toLocaleDateString(),
         timestamp: new Date(c.timestamp).getTime(),
         isRead: readNotificationIds.includes(c.id)
       });
     });
-
     return list.sort((a,b) => b.timestamp - a.timestamp).slice(0, 20);
   }, [attendance, reports, materialCosts, currentUser, readNotificationIds, deletedNotificationIds]);
 
-  const handleMarkAsRead = (id: string) => {
-    setReadNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
-  };
-
-  const handleDeleteNotification = (id: string) => {
-    setDeletedNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
-  };
-
+  const handleMarkAsRead = (id: string) => setReadNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
+  const handleDeleteNotification = (id: string) => setDeletedNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
   const handleMarkAllAsRead = () => {
     const allIds = derivedNotifications.map(n => n.id);
     setReadNotificationIds(prev => Array.from(new Set([...prev, ...allIds])));
+  };
+
+  const handleRegisterCompany = async (adminData: Partial<User>, companyData: Company) => {
+    setLoading(true);
+    try {
+      const { email, password, firstName, lastName, phone } = adminData;
+      if (!email || !password) throw new Error("Email e password obbligatori");
+
+      // 1. Crea l'utente in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
+
+      // 2. Crea l'azienda in Firestore
+      const companyRef = await addDoc(collection(db, "aziende"), {
+        ...companyData,
+        createdAt: new Date().toISOString()
+      });
+      const aziendaId = companyRef.id;
+
+      // 3. Crea il profilo admin in 'team' usando l'UID come ID documento
+      await setDoc(doc(db, "team", uid), {
+        firstName,
+        lastName,
+        email,
+        phone: phone || '',
+        aziendaId,
+        role: UserRole.ADMIN,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      });
+
+      console.log("Registrazione azienda e admin completata con successo.");
+    } catch (e: any) {
+      console.error("Errore registrazione:", e);
+      alert("Errore durante la registrazione: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddUser = async (userData: any) => {
+    if (!currentUser || !currentUser.aziendaId) {
+      alert("Errore: ID azienda non trovato per l'utente corrente.");
+      return;
+    }
+    const { password, ...data } = userData;
+    try {
+      // Nota: addDoc crea un record Firestore. Per permettere il login reale, 
+      // servirebbe un account Auth (creabile solo via Cloud Functions o logout/login).
+      // Questo record apparirà nella lista Risorse Umane grazie alla query onSnapshot.
+      await addDoc(collection(db, "team"), {
+        ...data,
+        aziendaId: currentUser.aziendaId,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      });
+      console.log("Nuovo collaboratore aggiunto a Firestore con successo.");
+    } catch (e: any) {
+      console.error("Errore in handleAddUser:", e);
+      throw e; // Rilancio l'errore per farlo gestire dalla vista Resources
+    }
   };
 
   const handleUpdateAttendanceRecord = async (id: string, updates: Partial<AttendanceRecord>) => {
     await updateDoc(doc(db, "timbrature", id), updates);
   };
 
-  const handleAddUser = async (userData: any) => {
-    if (!currentUser) return;
-    const { password, ...data } = userData;
-    await addDoc(collection(db, "team"), {
-      ...data,
-      aziendaId: currentUser.aziendaId,
-      isActive: true
-    });
-  };
-
   if (loading) return <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-bold tracking-widest"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>COSTRUGEST...</div>;
-  if (!currentUser) return <Login onLogin={async (email, password) => { await signInWithEmailAndPassword(auth, email, password); }} onRegisterCompany={() => {}} onPasswordReset={async (email) => { await sendPasswordResetEmail(auth, email); }} users={users} />;
+  if (!currentUser) return <Login onLogin={async (email, password) => { await signInWithEmailAndPassword(auth, email, password); }} onRegisterCompany={handleRegisterCompany} onPasswordReset={async (email) => { await sendPasswordResetEmail(auth, email); }} users={users} />;
 
   const activeAttendance = attendance.find(a => a.userId === currentUser.id && !a.endTime);
   const activeSite = sites.find(s => s.id === activeAttendance?.siteId);
