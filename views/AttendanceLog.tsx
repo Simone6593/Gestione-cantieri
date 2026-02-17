@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input } from '../components/Shared';
 import { AttendanceRecord, DailyReport, User, UserRole, Site, PaySlip, Company, DailySchedule } from '../types';
-import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon, AlertTriangle, AlertCircle, Users } from 'lucide-react';
+import { Clock, MapPin, Calendar, Trash2, Search, CheckCircle2, Calculator, Info, Edit2, Save, History, Map as MapIcon, AlertTriangle, AlertCircle, Users, ClipboardCheck } from 'lucide-react';
 
 interface AttendanceLogProps {
   currentUser: User;
@@ -55,7 +55,6 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
     if (!schedule) return null;
 
     const scheduledWorkerIds = new Set<string>();
-    // Fix: Explicitly cast siteAssignments values to string[] to resolve 'unknown' type inference error
     Object.values(schedule.siteAssignments).forEach(ids => (ids as string[]).forEach(id => scheduledWorkerIds.add(id)));
 
     const clockedInWorkerIds = new Set(
@@ -70,7 +69,7 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
       const isToday = new Date(a.startTime).toISOString().split('T')[0] === filterDate;
       if (!isToday || a.endTime) return false;
       const hoursActive = (new Date().getTime() - new Date(a.startTime).getTime()) / (1000 * 60 * 60);
-      return hoursActive > 10; // Segnala se è dentro da più di 10 ore e non è uscito
+      return hoursActive > 10; 
     });
 
     return {
@@ -149,37 +148,67 @@ const AttendanceLog: React.FC<AttendanceLogProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Audit Summary Alert */}
+      {/* Alert di Consistenza Timbrature per Amministratori */}
       {auditSummary && (auditSummary.missingIns.length > 0 || auditSummary.missingOuts.length > 0) && (
-        <Card className="p-4 bg-red-50 border-red-200 animate-in slide-in-from-top-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={24} />
+        <Card className="p-5 bg-white border-l-4 border-l-red-500 animate-in slide-in-from-top-4 shadow-lg">
+          <div className="flex items-start gap-4">
+            <div className="bg-red-100 p-2 rounded-xl text-red-600">
+              <AlertCircle size={28} />
+            </div>
             <div className="flex-1">
-              <h4 className="text-sm font-bold text-red-900 uppercase tracking-tight">Anomalie Timbrature rilevate ({filterDate})</h4>
-              <div className="mt-2 space-y-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="text-lg font-black text-slate-800 uppercase tracking-tight">Verifica Consistenza Turni</h4>
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">{new Date(filterDate).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] font-black text-red-600 uppercase tracking-widest">Copertura</div>
+                  <div className="text-2xl font-black text-slate-800">{auditSummary.totalClocked}/{auditSummary.totalScheduled}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {auditSummary.missingIns.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-bold bg-red-600 text-white px-1.5 py-0.5 rounded uppercase">Manca Ingresso:</span>
-                    {auditSummary.missingIns.map(u => (
-                      <span key={u.id} className="text-xs font-semibold text-red-800 bg-red-100/50 px-2 py-0.5 rounded border border-red-200">{u.firstName} {u.lastName}</span>
-                    ))}
+                  <div className="bg-red-50/50 p-3 rounded-xl border border-red-100">
+                    <div className="flex items-center gap-2 mb-2 text-red-700">
+                      <Users size={16} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Mancato Ingresso</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {auditSummary.missingIns.map(u => (
+                        <span key={u.id} className="text-[11px] font-bold text-red-700 bg-white px-2.5 py-1 rounded-lg border border-red-200 shadow-sm">
+                          {u.firstName} {u.lastName}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
+                
                 {auditSummary.missingOuts.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-bold bg-amber-600 text-white px-1.5 py-0.5 rounded uppercase">Manca Uscita (>10h):</span>
-                    {auditSummary.missingOuts.map(a => (
-                      <span key={a.id} className="text-xs font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">{a.userName}</span>
-                    ))}
+                  <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100">
+                    <div className="flex items-center gap-2 mb-2 text-amber-700">
+                      <Clock size={16} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Mancata Uscita (&gt;10h)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {auditSummary.missingOuts.map(a => (
+                        <span key={a.id} className="text-[11px] font-bold text-amber-700 bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-sm">
+                          {a.userName}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-[10px] font-black text-red-600 uppercase">Status</div>
-              <div className="text-xl font-black text-red-700">{auditSummary.totalClocked}/{auditSummary.totalScheduled}</div>
-            </div>
           </div>
+        </Card>
+      )}
+
+      {auditSummary && auditSummary.missingIns.length === 0 && auditSummary.missingOuts.length === 0 && auditSummary.totalScheduled > 0 && (
+        <Card className="p-4 bg-green-50 border-green-100 flex items-center gap-3 shadow-sm">
+          <div className="bg-green-100 p-1.5 rounded-full text-green-600"><ClipboardCheck size={20} /></div>
+          <span className="text-xs font-bold text-green-800 uppercase tracking-widest">Tutti i dipendenti programmati hanno timbrato correttamente per oggi.</span>
         </Card>
       )}
 

@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2
+  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2, ChevronRight
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -13,7 +13,6 @@ interface LayoutProps {
   children: React.ReactNode;
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  // Aggiunte props per le notifiche derivate
   notifications?: any[];
 }
 
@@ -84,7 +83,7 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-30">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-30 shrink-0">
           <div className="flex items-center gap-4">
             <button className="lg:hidden text-slate-600" onClick={() => setSidebarOpen(true)}><Menu size={24} /></button>
             <h1 className="text-lg font-bold text-slate-800 hidden sm:block">
@@ -145,6 +144,30 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
             <button onClick={() => setIsGuideOpen(true)} className="p-2 text-slate-400 hover:text-[var(--primary-color)] transition-colors"><HelpCircle size={22} /></button>
           </div>
         </header>
+
+        {/* Global Activity Ticker per Admin/Supervisori */}
+        {isAdminOrSupervisor && notifications.length > 0 && (
+          <div className="bg-slate-900 text-white px-6 py-2 overflow-hidden shrink-0 border-b border-white/5 relative group">
+            <div className="flex items-center gap-4 animate-in slide-in-from-right duration-1000">
+              <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest whitespace-nowrap bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 shrink-0 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                Live Status
+              </span>
+              <div className="flex gap-6 items-center flex-1 overflow-x-auto no-scrollbar">
+                {notifications.slice(0, 3).map((n, i) => (
+                  <div key={i} className="flex items-center gap-2 whitespace-nowrap">
+                    <div className={`w-1 h-1 rounded-full ${n.type === 'report' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                    <span className="text-[10px] font-bold opacity-90">{n.title}:</span>
+                    <span className="text-[10px] opacity-60 italic">{n.message}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setIsNotifOpen(true)} className="text-[9px] font-black text-white/40 hover:text-white uppercase tracking-widest flex items-center gap-1 shrink-0">
+                Tutte <ChevronRight size={10} />
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="max-w-7xl mx-auto min-h-full">
