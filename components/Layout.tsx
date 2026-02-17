@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2, ChevronRight, Check, Trash2, CheckCheck
+  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2, ChevronRight, Check, Trash2, CheckCheck
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -40,6 +40,10 @@ const Layout: React.FC<LayoutProps> = ({
   const isAdminOrSupervisor = user.role === UserRole.ADMIN || user.role === UserRole.SUPERVISOR;
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
+
+  // Fix: Declare ListFilter and its dependencies before they are referenced in navItems
+  const ListFilterIcon = ({ size }: { size: number }) => <Archive size={size} />;
+  const ListFilter = ({ size }: { size: number }) => <ListFilterIcon size={size} />;
 
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
@@ -116,7 +120,7 @@ const Layout: React.FC<LayoutProps> = ({
                 >
                   <Bell size={22} />
                   {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 border-2 border-white rounded-full text-[8px] flex items-center justify-center text-white font-black">{unreadCount}</span>
+                    <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 bg-red-500 border-2 border-white rounded-full text-[8px] flex items-center justify-center text-white font-black">{unreadCount}</span>
                   )}
                 </button>
 
@@ -194,7 +198,7 @@ const Layout: React.FC<LayoutProps> = ({
             )}
             <button onClick={() => setIsGuideOpen(true)} className="p-2 text-slate-400 hover:text-[var(--primary-color)] transition-colors"><HelpCircle size={22} /></button>
           </div>
- header>
+        </header>
 
         {/* Global Activity Ticker per Admin/Supervisori */}
         {isAdminOrSupervisor && notifications.filter(n => !n.isRead).length > 0 && (
