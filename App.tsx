@@ -62,10 +62,20 @@ const App: React.FC = () => {
   const [paySlips, setPaySlips] = useState<PaySlip[]>([]);
   const [materialCosts, setMaterialCosts] = useState<MaterialCost[]>([]);
 
+  // Stati per la gestione notifiche letti/cancellati
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [deletedNotificationIds, setDeletedNotificationIds] = useState<string[]>([]);
+
   useEffect(() => {
     setPersistence(auth, browserSessionPersistence).catch(console.error);
     requestNotificationPermission();
     
+    // Caricamento stati notifiche da LocalStorage
+    const savedRead = localStorage.getItem('costrugest_read_notifs');
+    const savedDeleted = localStorage.getItem('costrugest_deleted_notifs');
+    if (savedRead) setReadNotificationIds(JSON.parse(savedRead));
+    if (savedDeleted) setDeletedNotificationIds(JSON.parse(savedDeleted));
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
@@ -84,6 +94,15 @@ const App: React.FC = () => {
     return () => unsubscribeAuth();
   }, []);
 
+  // Persistenza stati notifiche
+  useEffect(() => {
+    localStorage.setItem('costrugest_read_notifs', JSON.stringify(readNotificationIds));
+  }, [readNotificationIds]);
+
+  useEffect(() => {
+    localStorage.setItem('costrugest_deleted_notifs', JSON.stringify(deletedNotificationIds));
+  }, [deletedNotificationIds]);
+
   const setupFirestoreListeners = (aziendaId: string) => {
     onSnapshot(doc(db, "aziende", aziendaId), (d) => d.exists() && setCompany({ ...d.data(), id: d.id } as Company));
     onSnapshot(query(collection(db, "team"), where("aziendaId", "==", aziendaId), where("isActive", "==", true)), (s) => setUsers(s.docs.map(d => ({ ...d.data(), id: d.id } as User))));
@@ -100,50 +119,69 @@ const App: React.FC = () => {
     });
   };
 
-  // Notifiche derivate per Admin/Supervisor
+  // Notifiche derivate per Admin/Supervisor con logica di filtro e stato
   const derivedNotifications = useMemo(() => {
     if (!currentUser || currentUser.role === UserRole.WORKER) return [];
     
     const list: any[] = [];
     
-    // Ultime 5 timbrature
-    const recentAttendance = [...attendance].sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).slice(0, 5);
-    recentAttendance.forEach(a => {
+    // Ultime timbrature
+    attendance.forEach(a => {
+      if (deletedNotificationIds.includes(a.id)) return;
       list.push({
+        id: a.id,
         type: 'attendance',
         title: `${a.userName} è arrivato`,
         message: `Entrato alle ${new Date(a.startTime).toLocaleTimeString()} presso ${a.siteName}`,
         time: new Date(a.startTime).toLocaleDateString(),
-        timestamp: new Date(a.startTime).getTime()
+        timestamp: new Date(a.startTime).getTime(),
+        isRead: readNotificationIds.includes(a.id)
       });
     });
 
-    // Ultimi 5 rapportini
-    const recentReports = [...reports].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
-    recentReports.forEach(r => {
+    // Ultimi rapportini
+    reports.forEach(r => {
+      if (deletedNotificationIds.includes(r.id)) return;
       list.push({
+        id: r.id,
         type: 'report',
         title: `Nuovo Rapportino: ${r.siteName}`,
         message: `Inviato da ${r.compilerName}: "${r.description.substring(0, 40)}..."`,
         time: new Date(r.timestamp).toLocaleDateString(),
-        timestamp: new Date(r.timestamp).getTime()
+        timestamp: new Date(r.timestamp).getTime(),
+        isRead: readNotificationIds.includes(r.id)
       });
     });
 
-    // Ultime 5 spese
-    const recentCosts = [...materialCosts].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 5);
-    recentCosts.forEach(c => {
+    // Ultime spese
+    materialCosts.forEach(c => {
+      if (deletedNotificationIds.includes(c.id)) return;
       list.push({
+        id: c.id,
         type: 'cost',
         title: `Nuova Spesa: ${c.supplier}`,
         message: `Importo: € ${c.taxableAmount.toFixed(2)} per ${c.siteNames.join(', ')}`,
         time: new Date(c.timestamp).toLocaleDateString(),
-        timestamp: new Date(c.timestamp).getTime()
+        timestamp: new Date(c.timestamp).getTime(),
+        isRead: readNotificationIds.includes(c.id)
       });
     });
 
-    return list.sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
-  }, [attendance, reports, materialCosts, currentUser]);
+    return list.sort((a,b) => b.timestamp - a.timestamp).slice(0, 20);
+  }, [attendance, reports, materialCosts, currentUser, readNotificationIds, deletedNotificationIds]);
+
+  const handleMarkAsRead = (id: string) => {
+    setReadNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
+  };
+
+  const handleDeleteNotification = (id: string) => {
+    setDeletedNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
+  };
+
+  const handleMarkAllAsRead = () => {
+    const allIds = derivedNotifications.map(n => n.id);
+    setReadNotificationIds(prev => Array.from(new Set([...prev, ...allIds])));
+  };
 
   const handleUpdateAttendanceRecord = async (id: string, updates: Partial<AttendanceRecord>) => {
     await updateDoc(doc(db, "timbrature", id), updates);
@@ -167,7 +205,17 @@ const App: React.FC = () => {
   const referenceDate = activeAttendance ? getLocalDateString(activeAttendance.startTime) : undefined;
 
   return (
-    <Layout user={currentUser} company={company} onLogout={() => signOut(auth)} activeTab={activeTab} setActiveTab={setActiveTab} notifications={derivedNotifications}>
+    <Layout 
+      user={currentUser} 
+      company={company} 
+      onLogout={() => signOut(auth)} 
+      activeTab={activeTab} 
+      setActiveTab={setActiveTab} 
+      notifications={derivedNotifications}
+      onMarkNotifRead={handleMarkAsRead}
+      onDeleteNotif={handleDeleteNotification}
+      onMarkAllNotifRead={handleMarkAllAsRead}
+    >
       {activeTab === 'attendance' && <Attendance user={currentUser} sites={sites} attendance={attendance} schedules={schedules} reports={reports} onClockIn={async (sId, coords) => await addDoc(collection(db, "timbrature"), { aziendaId: currentUser.aziendaId, userId: currentUser.id, userName: `${currentUser.firstName} ${currentUser.lastName}`, siteId: sId, siteName: sites.find(s => s.id === sId)?.client || 'Unknown', startTime: new Date().toISOString(), startCoords: coords, reportSubmitted: false })} onClockOut={async (id, coords) => await updateDoc(doc(db, "timbrature", id), { endTime: new Date().toISOString(), endCoords: coords })} onGoToReport={() => setActiveTab('daily-report')} />}
       {activeTab === 'daily-report' && <DailyReportForm user={currentUser} activeSite={activeSite} sites={sites} allWorkers={users.filter(u => u.role === UserRole.WORKER)} schedules={schedules} referenceDate={referenceDate} onSubmit={async (r) => { await addDoc(collection(db, "reports"), { ...r, aziendaId: currentUser.aziendaId }); if (activeAttendance) await updateDoc(doc(db, "timbrature", activeAttendance.id), { endTime: new Date().toISOString(), endCoords: r.coords || null, reportSubmitted: true }); setActiveTab('attendance'); }} />}
       {activeTab === 'attendance-log' && <AttendanceLog currentUser={currentUser} attendance={attendance} reports={reports} sites={sites} schedules={schedules} workers={users} company={company} paySlips={paySlips} onRemoveRecord={async (id) => await deleteDoc(doc(db, "timbrature", id))} onUpdateRecord={handleUpdateAttendanceRecord} />}

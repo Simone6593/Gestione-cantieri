@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { UserRole, Company } from '../types';
 import { 
-  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2, ChevronRight
+  Users, Construction, Archive, Clock, CalendarDays, LogOut, Menu, X, User as UserIcon, ListFilter, HelpCircle, Info, Settings, FileText, ShoppingCart, Bell, MessageSquare, CheckCircle2, ChevronRight, Check, Trash2, CheckCheck
 } from 'lucide-react';
 import { Card, Button } from './Shared';
 
@@ -14,9 +14,23 @@ interface LayoutProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   notifications?: any[];
+  onMarkNotifRead?: (id: string) => void;
+  onDeleteNotif?: (id: string) => void;
+  onMarkAllNotifRead?: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, activeTab, setActiveTab, notifications = [] }) => {
+const Layout: React.FC<LayoutProps> = ({ 
+  user, 
+  company, 
+  onLogout, 
+  children, 
+  activeTab, 
+  setActiveTab, 
+  notifications = [],
+  onMarkNotifRead,
+  onDeleteNotif,
+  onMarkAllNotifRead
+}) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -24,6 +38,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
   if (!user || !user.role) return null;
 
   const isAdminOrSupervisor = user.role === UserRole.ADMIN || user.role === UserRole.SUPERVISOR;
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.isRead).length, [notifications]);
 
   const navItems = [
     { id: 'attendance', label: 'Timbratura', icon: Clock, roles: [UserRole.WORKER] },
@@ -99,8 +115,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
                   className={`p-2 rounded-full transition-all relative ${isNotifOpen ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
                 >
                   <Bell size={22} />
-                  {notifications.length > 0 && (
-                    <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 border-2 border-white rounded-full text-[8px] flex items-center justify-center text-white font-black">{unreadCount}</span>
                   )}
                 </button>
 
@@ -108,22 +124,57 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
                   <div className="absolute right-0 mt-3 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2 z-[60]">
                     <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                       <span className="font-bold text-slate-800 text-sm">Notifiche Recenti</span>
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full uppercase">{notifications.length} Eventi</span>
+                      <div className="flex items-center gap-2">
+                        {unreadCount > 0 && onMarkAllNotifRead && (
+                          <button 
+                            onClick={onMarkAllNotifRead}
+                            className="text-[9px] font-black text-blue-600 hover:text-blue-800 flex items-center gap-1 uppercase tracking-widest bg-blue-100 px-2 py-1 rounded"
+                            title="Segna tutte come lette"
+                          >
+                            <CheckCheck size={12} /> Letti Tutti
+                          </button>
+                        )}
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-200 px-2 py-0.5 rounded-full uppercase">{notifications.length} Tot</span>
+                      </div>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       {notifications.length > 0 ? (
-                        notifications.map((n, i) => (
-                          <div key={i} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors flex gap-3">
+                        notifications.map((n) => (
+                          <div 
+                            key={n.id} 
+                            className={`p-4 border-b border-slate-50 transition-all flex gap-3 relative group ${n.isRead ? 'opacity-60 grayscale-[0.3]' : 'bg-blue-50/30'}`}
+                          >
                             <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
                               n.type === 'attendance' ? 'bg-blue-100 text-blue-600' : 
                               n.type === 'report' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
                             }`}>
                               {n.type === 'attendance' ? <Clock size={16}/> : n.type === 'report' ? <MessageSquare size={16}/> : <ShoppingCart size={16}/>}
                             </div>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 pr-6">
                               <p className="text-xs font-bold text-slate-800 leading-tight">{n.title}</p>
                               <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
                               <p className="text-[9px] text-slate-400 mt-1 font-medium">{n.time}</p>
+                            </div>
+                            
+                            <div className="absolute top-4 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {!n.isRead && onMarkNotifRead && (
+                                <button 
+                                  onClick={() => onMarkNotifRead(n.id)}
+                                  className="p-1 bg-blue-600 text-white rounded shadow-sm hover:bg-blue-700"
+                                  title="Segna come letta"
+                                >
+                                  <Check size={10} />
+                                </button>
+                              )}
+                              {onDeleteNotif && (
+                                <button 
+                                  onClick={() => onDeleteNotif(n.id)}
+                                  className="p-1 bg-slate-100 text-slate-400 rounded shadow-sm hover:text-red-600 hover:bg-red-50"
+                                  title="Cestina"
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))
@@ -134,8 +185,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
                         </div>
                       )}
                     </div>
-                    <div className="p-3 text-center border-t border-slate-100">
-                      <button onClick={() => setIsNotifOpen(false)} className="text-[10px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-800">Chiudi</button>
+                    <div className="p-3 text-center border-t border-slate-100 bg-slate-50">
+                      <button onClick={() => setIsNotifOpen(false)} className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600">Chiudi</button>
                     </div>
                   </div>
                 )}
@@ -143,10 +194,10 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
             )}
             <button onClick={() => setIsGuideOpen(true)} className="p-2 text-slate-400 hover:text-[var(--primary-color)] transition-colors"><HelpCircle size={22} /></button>
           </div>
-        </header>
+ header>
 
         {/* Global Activity Ticker per Admin/Supervisori */}
-        {isAdminOrSupervisor && notifications.length > 0 && (
+        {isAdminOrSupervisor && notifications.filter(n => !n.isRead).length > 0 && (
           <div className="bg-slate-900 text-white px-6 py-2 overflow-hidden shrink-0 border-b border-white/5 relative group">
             <div className="flex items-center gap-4 animate-in slide-in-from-right duration-1000">
               <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest whitespace-nowrap bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 shrink-0 flex items-center gap-1.5">
@@ -154,8 +205,8 @@ const Layout: React.FC<LayoutProps> = ({ user, company, onLogout, children, acti
                 Live Status
               </span>
               <div className="flex gap-6 items-center flex-1 overflow-x-auto no-scrollbar">
-                {notifications.slice(0, 3).map((n, i) => (
-                  <div key={i} className="flex items-center gap-2 whitespace-nowrap">
+                {notifications.filter(n => !n.isRead).slice(0, 3).map((n) => (
+                  <div key={n.id} className="flex items-center gap-2 whitespace-nowrap">
                     <div className={`w-1 h-1 rounded-full ${n.type === 'report' ? 'bg-green-500' : 'bg-blue-500'}`} />
                     <span className="text-[10px] font-bold opacity-90">{n.title}:</span>
                     <span className="text-[10px] opacity-60 italic">{n.message}</span>
